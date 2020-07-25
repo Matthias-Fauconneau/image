@@ -80,7 +80,7 @@ impl<'t, T> Image<&'t mut [T]> {
     }
 }
 
-impl<'t, T> Iterator for Image<&'t [T]> {
+impl<'t, T> Iterator for Image<&'t [T]> { // Row iterator
     type Item = &'t [T];
     fn next(&mut self) -> Option<Self::Item> {
         if self.size.y > 0 { Some(&self.take(1).data[..self.size.x as usize]) }
@@ -88,7 +88,7 @@ impl<'t, T> Iterator for Image<&'t [T]> {
     }
 }
 
-impl<'t, T> Iterator for Image<&'t mut [T]> {
+impl<'t, T> Iterator for Image<&'t mut [T]> { // Row iterator
     type Item = &'t mut[T];
     fn next(&mut self) -> Option<Self::Item> {
         if self.size.y > 0 { Some(&mut self.take_mut(1).data[..self.size.x as usize]) }
@@ -212,6 +212,10 @@ impl bgrf { fn clamp(&self) -> Self { use crate::num::clamp; Self{b:clamp(self.b
 #[allow(non_camel_case_types)] #[derive(Clone, Copy, Debug)] pub struct bgra8 { pub b : u8, pub g : u8, pub r : u8, pub a: u8  }
 impl std::convert::From<u8> for bgra8 { fn from(v: u8) -> Self { bgra8{b:v,g:v,r:v,a:v} } }
 
+// Optimized code for dev user
+pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
+pub fn set_map(target: &mut Image<&mut [bgra8]>, source: &Image<&[u8]>) { target.set_map(source, |_,&source| bgra8{a : 0xFF, ..source.into()}) }
+
 impl<'t> Image<&'t mut [bgra8]> {
     pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{core::slice::cast_mut(slice)}, size) }
 }
@@ -222,6 +226,7 @@ cfg_if::cfg_if! { if #[cfg(feature="sRGB")] {
 		let linear = i as f64 / 0xFFF as f64;
 		(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
 	}));
-    #[allow(non_snake_case)] pub fn sRGB(v : f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-    impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(v.b), g:sRGB(v.g), r:sRGB(v.r), a:0xFF} } }
+    #[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+    impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
+	#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Vec<u8>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
 }}
