@@ -9,10 +9,11 @@ pub struct Image<Data> {
 
 impl<Data> std::fmt::Debug for Image<Data> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
 
-use ::xy::{xy, uint2};
+use ::xy::{xy, uint2, Rect};
 
 impl<D> Image<D> {
     pub fn index(&self, xy{x,y}: uint2) -> usize { assert!( x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
+    fn rect(&self) -> Rect { Rect::from(self.size) }
 }
 
 impl<D> std::ops::Deref for Image<D> {
@@ -59,6 +60,10 @@ impl<T, D:std::ops::DerefMut<Target=[T]>> Image<D> {
     #[track_caller] pub fn slice_mut(&mut self, offset : uint2, size : size) -> Image<&mut[T]> {
         assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y);
         Image{size, stride: self.stride, data: &mut self.data[(offset.y*self.stride+offset.x) as usize..]}
+    }
+    pub fn slice_mut_clip(&mut self, sub: Rect) -> Image<&mut[T]> {
+		let sub = self.rect().clip(sub);
+		self.slice_mut(sub.min.unsigned(), sub.size())
     }
 }
 
