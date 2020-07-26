@@ -14,4 +14,4 @@ xy = { version = '', path = '../xy' }
 core = { version = '', path = '../core' }
 
 [profile.dev] # Optimize fill,set_map,from_linear
-opt-level = 1
+opt-level = 2
