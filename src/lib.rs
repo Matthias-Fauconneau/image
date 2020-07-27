@@ -220,6 +220,7 @@ impl std::convert::From<u8> for bgra8 { fn from(v: u8) -> Self { bgra8{b:v,g:v,r
 // Optimized code for dev user
 pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
 pub fn set_map(target: &mut Image<&mut [bgra8]>, source: &Image<&[u8]>) { target.set_map(source, |_,&source| bgra8{a : 0xFF, ..source.into()}) }
+pub fn invert(image: &mut Image<&mut [bgra8]>) { image.modify(|bgra8{b,g,r,..}| bgra8{b:0xFF-b, g:0xFF-g, r:0xFF-r, a:0xFF}); }
 
 impl<'t> Image<&'t mut [bgra8]> {
     pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{core::slice::cast_mut(slice)}, size) }
