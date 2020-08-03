@@ -1,13 +1,13 @@
 #![feature(once_cell)]
 use ::xy::size;
 
-pub struct Image<Data> {
+pub struct Image<D> {
     pub stride : u32,
     pub size : size,
-    pub data : Data,
+    pub data : D,
 }
 
-impl<Data> std::fmt::Debug for Image<Data> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
+impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
 
 use ::xy::{xy, uint2, Rect};
 
