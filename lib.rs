@@ -58,7 +58,7 @@ impl<T, D:std::ops::DerefMut<Target=[T]>> Image<D> {
         Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &mut self.data[(rows.start*self.stride) as usize..]}
     }
     #[track_caller] pub fn slice_mut(&mut self, offset: uint2, size: size) -> Image<&mut[T]> {
-        core::assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, self.size, offset, size);
+        assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y);
         Image{size, stride: self.stride, data: &mut self.data[(offset.y*self.stride+offset.x) as usize..]}
     }
     pub fn slice_mut_clip(&mut self, sub: Rect) -> Image<&mut[T]> {
@@ -71,7 +71,7 @@ impl<'t, T> Image<&'t [T]> {
     pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
         assert!(mid <= self.size.y);
         self.size.y -= mid;
-        use core::slice::Take;
+        use slice::Take;
         Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take((mid*self.stride) as usize)}
     }
 }
@@ -80,7 +80,7 @@ impl<'t, T> Image<&'t mut [T]> {
     pub fn take_mut<'s>(&'s mut self, mid: u32) -> Image<&'t mut[T]> {
         assert!(mid <= self.size.y);
         self.size.y -= mid;
-        use core::slice::TakeMut;
+        use slice::TakeMut;
         Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take_mut((mid*self.stride) as usize)}
     }
 }
@@ -205,11 +205,11 @@ impl<T> Image<Vec<T>> {
     pub fn as_mut(&mut self) -> Image<&mut [T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
 
-impl<T:core::num::Zero> Image<Vec<T>> {
-    pub fn zero(size: size) -> Self { Image::<Vec<T>>::from_iter(size, std::iter::from_fn(|| Some(core::num::Zero::zero()))) }
+#[cfg(feature="num")] impl<T:num::Zero> Image<Vec<T>> {
+    pub fn zero(size: size) -> Self { Image::<Vec<T>>::from_iter(size, std::iter::from_fn(|| Some(num::Zero::zero()))) }
 }
 
-core::vector!(3 bgr T T T, b g r, Blue Green Red);
+vector::vector!(3 bgr T T T, b g r, Blue Green Red);
 #[allow(non_camel_case_types)] pub type bgrf = bgr<f32>;
 #[cfg(feature="color")]
 impl bgrf { fn clamp(&self) -> Self { use crate::num::clamp; Self{b:clamp(self.b), g:clamp(self.g), r:clamp(self.r)} } }
@@ -222,17 +222,18 @@ pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| val
 pub fn set_map(target: &mut Image<&mut [bgra8]>, source: &Image<&[u8]>) { target.set_map(source, |_,&source| bgra8{a : 0xFF, ..source.into()}) }
 pub fn invert(image: &mut Image<&mut [bgra8]>) { image.modify(|bgra8{b,g,r,..}| bgra8{b:0xFF-b, g:0xFF-g, r:0xFF-r, a:0xFF}); }
 
+mod slice;
 impl<'t> Image<&'t mut [bgra8]> {
-    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{core::slice::cast_mut(slice)}, size) }
+    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{slice::cast_mut(slice)}, size) }
 }
 
 cfg_if::cfg_if! { if #[cfg(feature="sRGB")] {
 	use std::lazy::SyncLazy;
-	#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| core::array::map(|i| {
+	#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| array::map(|i| {
 		let linear = i as f64 / 0xFFF as f64;
 		(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
 	}));
-    #[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-    impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
+	#[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+	impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
 	#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Vec<u8>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
 }}

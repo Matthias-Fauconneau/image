@@ -4,14 +4,19 @@ version = '0.0.0'
 authors = ['Matthias Fauconneau <matthias.fauconneau@gmail.com>']
 edition = '2018'
 
+[lib]
+path = 'lib.rs'
+
 [features]
-sRGB = ['core/array']
+sRGB = ['array']
 default = ['sRGB']
 
 [dependencies]
 cfg-if = ''
-xy = { version = '', path = '../xy' }
-core = { version = '', path = '../core' }
+array = { path = '../array', optional = true }
+xy = { path = '../xy' }
+vector = { path = '../vector' }
+num = { path = '../num', optional = true }
 
 [profile.dev] # Optimize fill,set_map,from_linear
 opt-level = 2
