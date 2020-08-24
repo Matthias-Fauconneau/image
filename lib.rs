@@ -221,7 +221,9 @@ pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| val
 pub fn fill_mask(target: &mut Image<&mut [bgra8]>, bgr{b,g,r}: bgrf, source: &Image<&[u8]>) {
 	target.set_map(source, |_,&source| { let s = source as f32; bgra8{a : 0xFF, b: (s*b) as u8, g: (s*g) as u8, r: (s*r) as u8}})
 }
-pub fn invert(image: &mut Image<&mut [bgra8]>) { image.modify(|bgra8{b,g,r,..}| bgra8{b:0xFF-b, g:0xFF-g, r:0xFF-r, a:0xFF}); }
+pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
+	image.modify(|bgra8{b,g,r,..}| bgra8{b:if m.b {0xFF-b} else {*b}, g: if m.g {0xFF-g} else {*g}, r: if m.r {0xFF-r} else {*r}, a:0xFF});
+}
 
 mod slice;
 impl<'t> Image<&'t mut [bgra8]> {
