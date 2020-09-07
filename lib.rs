@@ -46,8 +46,8 @@ impl<T, D:std::ops::Deref<Target=[T]>> Image<D> {
 		assert!(rows.end <= self.size.y);
 		Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &self.data[(rows.start*self.stride) as usize..]}
 	}
-	pub fn slice(&self, offset: uint2, size: size) -> Image<&[T]> {
-		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y);
+	#[track_caller] pub fn slice(&self, offset: uint2, size: size) -> Image<&[T]> {
+		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, "{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		Image{size, stride: self.stride, data: &self.data[(offset.y*self.stride+offset.x) as usize..]}
 	}
 }
