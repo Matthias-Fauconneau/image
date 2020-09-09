@@ -17,6 +17,7 @@ array = { path = '../array', optional = true }
 xy = { path = '../xy' }
 vector = { path = '../vector' }
 num = { path = '../num', optional = true }
+fehler = ''
 
 [profile.dev] # Optimize fill,set_map,from_linear
 opt-level = 2
