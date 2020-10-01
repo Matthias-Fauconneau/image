@@ -7,16 +7,11 @@ edition = '2018'
 [lib]
 path = 'lib.rs'
 
-[features]
-sRGB = ['array']
-default = ['sRGB']
-
 [dependencies]
-cfg-if = ''
-array = { path = '../array', optional = true }
-xy = { path = '../xy' }
-vector = { path = '../vector' }
 num = { path = '../num', optional = true }
+iter = { path = '../iter' }
+vector = { path = '../vector' }
+xy = { path = '../xy' }
 fehler = ''
 
 [profile.dev] # Optimize fill,set_map,from_linear

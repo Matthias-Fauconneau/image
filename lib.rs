@@ -206,7 +206,7 @@ impl<T> Image<Vec<T>> {
 }
 
 #[cfg(feature="num")] impl<T:num::Zero> Image<Vec<T>> {
-	pub fn zero(size: size) -> Self { Image::<Vec<T>>::from_iter(size, std::iter::from_fn(|| Some(num::Zero::zero()))) }
+	pub fn zero(size: size) -> Self { Image::<Vec<T>>::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
 }
 
 vector::vector!(3 bgr T T T, b g r, Blue Green Red);
@@ -230,13 +230,11 @@ impl<'t> Image<&'t mut [bgra8]> {
     pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{slice::cast_mut(slice)}, size) }
 }
 
-cfg_if::cfg_if! { if #[cfg(feature="sRGB")] {
-	use std::lazy::SyncLazy;
-	#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| array::map(|i| {
-		let linear = i as f64 / 0xFFF as f64;
-		(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
-	}));
-	#[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-	impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
-	#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Vec<u8>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
-}}
+use std::lazy::SyncLazy;
+#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| iter::array::generate(|i| {
+	let linear = i as f64 / 0xFFF as f64;
+	(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
+}));
+#[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
+#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Vec<u8>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
