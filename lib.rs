@@ -1,4 +1,4 @@
-#![feature(once_cell)]
+#![feature(once_cell,array_map,array_value_iter,iterator_fold_self)]
 use ::xy::size;
 
 pub struct Image<D> {
@@ -213,8 +213,9 @@ vector::vector!(3 bgr T T T, b g r, Blue Green Red);
 #[allow(non_camel_case_types)] pub type bgrf = bgr<f32>;
 #[cfg(feature="num")] impl bgrf { pub fn clamp(&self) -> Self { use num::clamp; Self{b:clamp(0.,self.b,1.), g:clamp(0.,self.g,1.), r:clamp(0.,self.r,1.)} } }
 
-#[allow(non_camel_case_types)] #[derive(Clone, Copy, Debug)] pub struct bgra8 { pub b : u8, pub g : u8, pub r : u8, pub a: u8  }
-impl std::convert::From<u8> for bgra8 { fn from(v: u8) -> Self { bgra8{b:v,g:v,r:v,a:v} } }
+mod bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); }
+#[allow(non_camel_case_types)] pub type bgra8 = bgra::bgra<u8>;
+impl bgra8 { pub fn saturating_add(self, b: Self) -> Self { self.iter().zip(b.iter()).map(|(a,&b)| a.saturating_add(b)).collect() } }
 
 // Optimized code for dev user
 pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
