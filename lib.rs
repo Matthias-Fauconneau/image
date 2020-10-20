@@ -215,7 +215,10 @@ vector::vector!(3 bgr T T T, b g r, Blue Green Red);
 
 mod bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); }
 #[allow(non_camel_case_types)] pub type bgra8 = bgra::bgra<u8>;
-impl bgra8 { pub fn saturating_add(self, b: Self) -> Self { self.iter().zip(b.iter()).map(|(a,&b)| a.saturating_add(b)).collect() } }
+impl bgra8 {
+	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.iter().zip(b.iter()).map(|(a,&b)| a.saturating_add(b)).collect() }
+	pub fn saturating_add_assign(&mut self, b: Self) { *self = self.saturating_add(b) }
+}
 
 // Optimized code for dev user
 pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
