@@ -1,4 +1,4 @@
-#![feature(once_cell,array_map,array_value_iter,iterator_fold_self)]
+#![feature(once_cell,array_zip,array_map,array_value_iter,iterator_fold_self)]
 use ::xy::size;
 
 pub struct Image<D> {
@@ -211,12 +211,12 @@ impl<T> Image<Vec<T>> {
 
 vector::vector!(3 bgr T T T, b g r, Blue Green Red);
 #[allow(non_camel_case_types)] pub type bgrf = bgr<f32>;
-#[cfg(feature="num")] impl bgrf { pub fn clamp(&self) -> Self { use num::clamp; Self{b:clamp(0.,self.b,1.), g:clamp(0.,self.g,1.), r:clamp(0.,self.r,1.)} } }
+#[cfg(feature="num")] impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 
 mod bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); }
 #[allow(non_camel_case_types)] pub type bgra8 = bgra::bgra<u8>;
 impl bgra8 {
-	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.iter().zip(b.iter()).map(|(a,&b)| a.saturating_add(b)).collect() }
+	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.as_array().zip(b.as_array()).map(|(a,&b)| a.saturating_add(b)).into() }
 	pub fn saturating_add_assign(&mut self, b: Self) { *self = self.saturating_add(b) }
 }
 
@@ -229,16 +229,16 @@ pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
 	image.modify(|bgra8{b,g,r,..}| bgra8{b:if m.b {0xFF-b} else {*b}, g: if m.g {0xFF-g} else {*g}, r: if m.r {0xFF-r} else {*r}, a:0xFF});
 }
 
-mod slice;
+pub mod slice;
 impl<'t> Image<&'t mut [bgra8]> {
     pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{slice::cast_mut(slice)}, size) }
 }
 
 use std::lazy::SyncLazy;
-#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| iter::array::generate(|i| {
+#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(||{use iter::vec::Vector;  iter::vec::generate(|i| {
 	let linear = i as f64 / 0xFFF as f64;
 	(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
-}));
+}).collect()});
 #[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
 #[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Vec<u8>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }

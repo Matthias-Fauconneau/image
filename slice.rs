@@ -18,9 +18,9 @@ impl<'t, T> TakeMut<'t, T> for &'t mut [T] {
 /// # Safety
 ///
 /// T should be a basic type (i.e valid when casted from any data)
-/*pub unsafe fn cast<T>(slice: &[u8]) -> &[T] {
+pub unsafe fn cast<T>(slice: &[u8]) -> &[T] {
     std::slice::from_raw_parts(slice.as_ptr() as *const T, slice.len() / std::mem::size_of::<T>())
-}*/
+}
 pub unsafe fn cast_mut<T>(slice: &mut [u8]) -> &mut [T] {
     std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut T, slice.len() / std::mem::size_of::<T>())
 }
