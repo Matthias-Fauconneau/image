@@ -4,15 +4,15 @@ version = '0.0.0'
 authors = ['Matthias Fauconneau <matthias.fauconneau@gmail.com>']
 edition = '2018'
 
+[dependencies]
+num= {git='https://github.com/Matthias-Fauconneau/num', optional = true}
+iter = {git='https://github.com/Matthias-Fauconneau/iter'}
+vector = {git='https://github.com/Matthias-Fauconneau/vector'}
+xy = {git='https://github.com/Matthias-Fauconneau/xy'}
+fehler = ''
+
 [lib]
 path = 'lib.rs'
-
-[dependencies]
-num = { path = '../num', optional = true }
-iter = { path = '../iter' }
-vector = { path = '../vector' }
-xy = { path = '../xy' }
-fehler = ''
 
 [profile.dev] # Optimize fill,set_map,from_linear
 opt-level = 2
