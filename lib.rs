@@ -2,9 +2,9 @@
 use ::xy::size;
 
 pub struct Image<D> {
-	pub stride : u32,
-	pub size : size,
 	pub data : D,
+	pub size : size,
+	pub stride : u32,
 }
 
 impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
@@ -101,15 +101,15 @@ impl<'t, T> Iterator for Image<&'t mut [T]> { // Row iterator
 	}
 }
 
-/*impl<'t, T> Image<&'t [T]> {
-    fn new(data: &'t [T], size : size2) -> Self {
-        assert!(data.len() == (size.x*size.y) as usize);
-        Self{stride: size.x, size, data}
-    }
-}*/
+impl<'t, T> Image<&'t [T]> {
+	pub fn new(size : size, data: &'t [T]) -> Self {
+			assert!(data.len() == (size.x*size.y) as usize);
+			Self{stride: size.x, size, data}
+	}
+}
 
 impl<'t, T> Image<&'t mut [T]> {
-	fn new(data: &'t mut [T], size : size) -> Self {
+	pub fn new(size : size, data: &'t mut [T]) -> Self {
 		assert!((size.x*size.y) as usize <= data.len());
 		Self{stride: size.x, size, data}
 	}
@@ -219,6 +219,10 @@ impl bgra8 {
 	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.as_array().zip(b.as_array()).map(|(a,&b)| a.saturating_add(b)).into() }
 	pub fn saturating_add_assign(&mut self, b: Self) { *self = self.saturating_add(b) }
 }
+//impl<T> From<bgr<T>> for bgra::bgra<T> { fn from(v: bgr<T>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:T::MAX} } }
+//impl From<bgr<u8>> for bgra::bgra<u8> { fn from(v: bgr<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
+pub mod rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); }
+impl From<rgb::rgb<u8>> for bgra::bgra<u8> { fn from(v: rgb::rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
 
 // Optimized code for dev user
 pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
@@ -231,7 +235,7 @@ pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
 
 pub mod slice;
 impl<'t> Image<&'t mut [bgra8]> {
-    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(unsafe{slice::cast_mut(slice)}, size) }
+    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(size, unsafe{slice::cast_mut(slice)}) }
 }
 
 use std::lazy::SyncLazy;
