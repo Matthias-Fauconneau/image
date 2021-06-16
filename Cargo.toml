@@ -15,4 +15,4 @@ fehler = ''
 path = 'lib.rs'
 
 [profile.dev] # Optimize fill,set_map,from_linear
-opt-level = 2
+opt-level = 3

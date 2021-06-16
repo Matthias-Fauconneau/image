@@ -1,4 +1,4 @@
-#![feature(once_cell,array_zip,array_map,array_value_iter,iterator_fold_self)]
+#![feature(once_cell, array_zip, array_map)]
 use ::xy::size;
 
 pub struct Image<D> {
@@ -224,7 +224,6 @@ impl bgra8 {
 pub mod rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); }
 impl From<rgb::rgb<u8>> for bgra::bgra<u8> { fn from(v: rgb::rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
 
-// Optimized code for dev user
 pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
 pub fn fill_mask(target: &mut Image<&mut [bgra8]>, bgr{b,g,r}: bgrf, source: &Image<&[u8]>) {
 	target.set_map(source, |_,&source| { let s = source as f32; bgra8{a : 0xFF, b: (s*b) as u8, g: (s*g) as u8, r: (s*r) as u8}})
@@ -239,7 +238,7 @@ impl<'t> Image<&'t mut [bgra8]> {
 }
 
 use std::lazy::SyncLazy;
-#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(||{use iter::vec::Vector;  iter::vec::generate(|i| {
+#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(||{use iter::ConstSizeIterator;  iter::generate(|i| {
 	let linear = i as f64 / 0xFFF as f64;
 	(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
 }).collect()});
