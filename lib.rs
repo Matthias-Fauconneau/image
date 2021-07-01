@@ -238,7 +238,7 @@ impl<'t> Image<&'t mut [bgra8]> {
 }
 
 use std::lazy::SyncLazy;
-#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(||{use iter::ConstSizeIterator;  iter::generate(|i| {
+#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(||{use iter::IntoConstSizeIterator;  iter::generate(|i| {
 	let linear = i as f64 / 0xFFF as f64;
 	(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
 }).collect()});
