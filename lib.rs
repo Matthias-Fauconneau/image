@@ -61,9 +61,9 @@ impl<T, D:std::ops::DerefMut<Target=[T]>> Image<D> {
 		assert!(offset.x+size.x <= self.size.x && offset.y < self.size.y && offset.y+size.y <= self.size.y && self.data.len() >= (offset.y*self.stride+offset.x) as usize,"{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		Image{size, stride: self.stride, data: &mut self.data[(offset.y*self.stride+offset.x) as usize..]}
 	}
-	#[track_caller] #[fehler::throws(as Option)] pub fn slice_mut_clip(&mut self, sub: Rect) -> Image<&mut[T]> {
+	#[track_caller] pub fn slice_mut_clip(&mut self, sub: Rect) -> Option<Image<&mut[T]>> {
 		let sub = self.rect().clip(sub);
-		self.slice_mut(sub.min.unsigned(), Some(sub.size()).filter(|s| s.x > 0 && s.y > 0)?)
+		Some(self.slice_mut(sub.min.unsigned(), Some(sub.size()).filter(|s| s.x > 0 && s.y > 0)?))
 	}
 }
 

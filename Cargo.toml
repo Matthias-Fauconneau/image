@@ -9,7 +9,6 @@ num= {git='https://github.com/Matthias-Fauconneau/num', optional = true}
 iter = {git='https://github.com/Matthias-Fauconneau/iter'}
 vector = {git='https://github.com/Matthias-Fauconneau/vector'}
 xy = {git='https://github.com/Matthias-Fauconneau/xy'}
-fehler = ''
 
 [lib]
 path = 'lib.rs'
