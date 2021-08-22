@@ -1,4 +1,4 @@
-#![feature(once_cell, array_zip, array_map)]
+#![feature(once_cell, array_zip)]
 use ::xy::size;
 
 pub struct Image<D> {
