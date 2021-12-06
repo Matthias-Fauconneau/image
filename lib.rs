@@ -1,4 +1,4 @@
-#![feature(once_cell, array_zip)]
+#![feature(once_cell,array_zip,type_alias_impl_trait,slice_take)]
 use ::xy::size;
 
 pub struct Image<D> {
@@ -71,8 +71,7 @@ impl<'t, T> Image<&'t [T]> {
 	pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
 		assert!(mid <= self.size.y);
 		self.size.y -= mid;
-		use slice::Take;
-		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take((mid*self.stride) as usize)}
+		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take(..(mid*self.stride) as usize).unwrap()}
 	}
 }
 
@@ -80,8 +79,7 @@ impl<'t, T> Image<&'t mut [T]> {
 	pub fn take_mut<'s>(&'s mut self, mid: u32) -> Image<&'t mut[T]> {
 		assert!(mid <= self.size.y);
 		self.size.y -= mid;
-		use slice::TakeMut;
-		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take_mut((mid*self.stride) as usize)}
+		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take_mut(..(mid*self.stride) as usize).unwrap()}
 	}
 }
 
@@ -216,7 +214,7 @@ vector::vector!(3 bgr T T T, b g r, Blue Green Red);
 mod bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); }
 #[allow(non_camel_case_types)] pub type bgra8 = bgra::bgra<u8>;
 impl bgra8 {
-	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.as_array().zip(b.as_array()).map(|(a,&b)| a.saturating_add(b)).into() }
+	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.into_iter().zip(b).map(|(a,b)| a.saturating_add(b)).collect() }
 	pub fn saturating_add_assign(&mut self, b: Self) { *self = self.saturating_add(b) }
 }
 //impl<T> From<bgr<T>> for bgra::bgra<T> { fn from(v: bgr<T>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:T::MAX} } }
@@ -234,7 +232,11 @@ pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
 
 pub mod slice;
 impl<'t> Image<&'t mut [bgra8]> {
-    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(size, unsafe{slice::cast_mut(slice)}) }
+    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(size, unsafe{
+		/// T should be a basic type (i.e valid when casted from any data)
+		pub unsafe fn cast_mut<T>(slice: &mut [u8]) -> &mut [T] { std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut T, slice.len() / std::mem::size_of::<T>()) }
+		cast_mut(slice)
+	}) }
 }
 
 use std::lazy::SyncLazy;
