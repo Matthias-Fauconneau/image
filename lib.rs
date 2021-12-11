@@ -197,14 +197,16 @@ impl<T> Image<Vec<T>> {
 		let len = (size.x * size.y) as usize;
 		let mut buffer = Vec::with_capacity(len);
 		unsafe{ buffer.set_len(len) };
-		Image::<Vec<T>>::new(size, buffer)
+		Self::new(size, buffer)
 	}
 	pub fn as_ref(&self) -> Image<&[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
 	pub fn as_mut(&mut self) -> Image<&mut [T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
-
+impl<T:Copy> Image<Vec<T>> {
+	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
+}
 #[cfg(feature="num")] impl<T:num::Zero> Image<Vec<T>> {
-	pub fn zero(size: size) -> Self { Image::<Vec<T>>::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
+	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
 }
 
 vector::vector!(3 bgr T T T, b g r, Blue Green Red);
