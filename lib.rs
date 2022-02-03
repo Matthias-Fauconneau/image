@@ -183,26 +183,26 @@ impl<T:Send> Image<&mut [T]> {
 	}
 }
 
-impl<T> Image<Vec<T>> {
-	pub fn new(size: size, data: Vec<T>) -> Self {
+impl<T> Image<Box<[T]>> {
+	pub fn new(size: size, data: Box<[T]>) -> Self {
 		assert_eq!(data.len(), (size.x*size.y) as usize);
 		Self{stride: size.x, size, data}
 	}
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self {
 		let mut buffer = Vec::with_capacity((size.y*size.x) as usize);
 		buffer.extend(iter.into_iter().take(buffer.capacity()));
-		Image::<Vec<T>>::new(size, buffer)
+		Image::<Box<[T]>>::new(size, buffer.into_boxed_slice())
 	}
 	pub fn uninitialized(size: size) -> Self {
 		let len = (size.x * size.y) as usize;
 		let mut buffer = Vec::with_capacity(len);
 		unsafe{ buffer.set_len(len) };
-		Self::new(size, buffer)
+		Self::new(size, buffer.into_boxed_slice())
 	}
 	pub fn as_ref(&self) -> Image<&[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
 	pub fn as_mut(&mut self) -> Image<&mut [T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
-impl<T:Copy> Image<Vec<T>> {
+impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
 #[cfg(feature="num")] impl<T:num::Zero> Image<Vec<T>> {
@@ -248,4 +248,4 @@ use std::lazy::SyncLazy;
 }).collect()});
 #[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
-#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Vec<u8>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
+#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
