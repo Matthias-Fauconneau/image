@@ -7,21 +7,20 @@ pub struct Image<D> {
 	pub stride : u32,
 }
 
-impl<'t, T> Image<&'t [T]> {
-	pub fn new(size : size, data: &'t [T]) -> Self {
-			assert!(data.len() == (size.x*size.y) as usize);
+impl<D> Image<D> {
+	pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> {
+			assert!(data.as_ref().len() == (size.x*size.y) as usize);
 			Self{stride: size.x, size, data}
 	}
 }
-impl<'t, T: bytemuck::Pod> Image<&'t [T]> { pub fn cast_slice<U:bytemuck::Pod>(slice: &'t [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice(slice)) } }
 
-impl<'t, T> Image<&'t mut [T]> {
-	pub fn new(size : size, data: &'t mut [T]) -> Self {
-		assert!((size.x*size.y) as usize <= data.len());
-		Self{stride: size.x, size, data}
-	}
+impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
+	pub fn cast_slice<U:bytemuck::Pod>(slice: &'t [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice(slice)) }
 }
-impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> { pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice_mut(slice)) } }
+
+impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
+	pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice_mut(slice)) }
+}
 
 impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
 
@@ -192,10 +191,6 @@ impl<T:Send> Image<&mut [T]> {
 }
 
 impl<T> Image<Box<[T]>> {
-	pub fn new(size: size, data: Box<[T]>) -> Self {
-		assert_eq!(data.len(), (size.x*size.y) as usize);
-		Self{stride: size.x, size, data}
-	}
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self {
 		let mut buffer = Vec::with_capacity((size.y*size.x) as usize);
 		buffer.extend(iter.into_iter().take(buffer.capacity()));
