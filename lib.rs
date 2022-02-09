@@ -8,10 +8,11 @@ pub struct Image<D> {
 }
 
 impl<D> Image<D> {
-	pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> {
-			assert!(data.as_ref().len() == (size.x*size.y) as usize);
-			Self{stride: size.x, size, data}
+	#[track_caller] pub fn strided<T>(size : size, data: D, stride: u32) -> Self where D:AsRef<[T]> {
+		assert_eq!(data.as_ref().len(), (stride*size.y) as usize);
+		Self{stride, size, data}
 	}
+	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(size, data, size.x) }
 }
 
 impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
