@@ -1,5 +1,5 @@
 #![feature(once_cell,array_zip,type_alias_impl_trait,slice_take)]
-use ::xy::size;
+use vector::{size, xy, uint2, Rect};
 
 pub struct Image<D> {
 	pub data : D,
@@ -7,13 +7,35 @@ pub struct Image<D> {
 	pub stride : u32,
 }
 
-impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
+impl<'t, T> Image<&'t [T]> {
+	pub fn new(size : size, data: &'t [T]) -> Self {
+			assert!(data.len() == (size.x*size.y) as usize);
+			Self{stride: size.x, size, data}
+	}
+}
+impl<'t, T: bytemuck::Pod> Image<&'t [T]> { pub fn cast_slice<U:bytemuck::Pod>(slice: &'t [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice(slice)) } }
 
-use ::xy::{xy, uint2, Rect};
+impl<'t, T> Image<&'t mut [T]> {
+	pub fn new(size : size, data: &'t mut [T]) -> Self {
+		assert!((size.x*size.y) as usize <= data.len());
+		Self{stride: size.x, size, data}
+	}
+}
+impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> { pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice_mut(slice)) } }
+
+impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
 
 impl<D> Image<D> {
 	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!( x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
 	fn rect(&self) -> Rect { Rect::from(self.size) }
+}
+
+impl<D> std::convert::AsRef<D> for Image<&D> {
+	fn as_ref(&self) -> &D { &self.data }
+}
+
+impl<D> std::convert::AsMut<D> for Image<&mut D> {
+	fn as_mut(&mut self) -> &mut D { &mut self.data }
 }
 
 impl<D> std::ops::Deref for Image<D> {
@@ -96,20 +118,6 @@ impl<'t, T> Iterator for Image<&'t mut [T]> { // Row iterator
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.size.y > 0 { Some(&mut self.take_mut(1).data[..self.size.x as usize]) }
 		else { None }
-	}
-}
-
-impl<'t, T> Image<&'t [T]> {
-	pub fn new(size : size, data: &'t [T]) -> Self {
-			assert!(data.len() == (size.x*size.y) as usize);
-			Self{stride: size.x, size, data}
-	}
-}
-
-impl<'t, T> Image<&'t mut [T]> {
-	pub fn new(size : size, data: &'t mut [T]) -> Self {
-		assert!((size.x*size.y) as usize <= data.len());
-		Self{stride: size.x, size, data}
 	}
 }
 
@@ -209,20 +217,20 @@ impl<T:Copy> Image<Box<[T]>> {
 	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
 }
 
-vector::vector!(3 bgr T T T, b g r, Blue Green Red);
+mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
 #[allow(non_camel_case_types)] pub type bgrf = bgr<f32>;
 #[cfg(feature="num")] impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 
-mod bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); }
-#[allow(non_camel_case_types)] pub type bgra8 = bgra::bgra<u8>;
+mod vector_bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); } pub use vector_bgra::bgra;
+#[allow(non_camel_case_types)] pub type bgra8 = bgra<u8>;
 impl bgra8 {
 	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.into_iter().zip(b).map(|(a,b)| a.saturating_add(b)).collect() }
 	pub fn saturating_add_assign(&mut self, b: Self) { *self = self.saturating_add(b) }
 }
 //impl<T> From<bgr<T>> for bgra::bgra<T> { fn from(v: bgr<T>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:T::MAX} } }
 //impl From<bgr<u8>> for bgra::bgra<u8> { fn from(v: bgr<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
-pub mod rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); }
-impl From<rgb::rgb<u8>> for bgra::bgra<u8> { fn from(v: rgb::rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
+mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
+impl From<rgb<u8>> for bgra<u8> { fn from(v: rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
 
 pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
 pub fn fill_mask(target: &mut Image<&mut [bgra8]>, bgr{b,g,r}: bgrf, source: &Image<&[u8]>) {
@@ -230,15 +238,6 @@ pub fn fill_mask(target: &mut Image<&mut [bgra8]>, bgr{b,g,r}: bgrf, source: &Im
 }
 pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
 	image.modify(|bgra8{b,g,r,..}| bgra8{b:if m.b {0xFF-b} else {*b}, g: if m.g {0xFF-g} else {*g}, r: if m.r {0xFF-r} else {*r}, a:0xFF});
-}
-
-pub mod slice;
-impl<'t> Image<&'t mut [bgra8]> {
-    pub fn from_bytes(slice: &'t mut [u8], size: size) -> Self { Self::new(size, unsafe{
-		/// T should be a basic type (i.e valid when casted from any data)
-		pub unsafe fn cast_mut<T>(slice: &mut [u8]) -> &mut [T] { std::slice::from_raw_parts_mut(slice.as_mut_ptr() as *mut T, slice.len() / std::mem::size_of::<T>()) }
-		cast_mut(slice)
-	}) }
 }
 
 use std::lazy::SyncLazy;
