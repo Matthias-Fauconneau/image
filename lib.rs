@@ -1,4 +1,4 @@
-#![feature(once_cell,array_zip,type_alias_impl_trait,slice_take)]
+#![feature(once_cell,array_zip,type_alias_impl_trait,slice_take,new_uninit)]
 use vector::{size, xy, uint2, Rect};
 
 pub struct Image<D> {
@@ -197,12 +197,7 @@ impl<T> Image<Box<[T]>> {
 		buffer.extend(iter.into_iter().take(buffer.capacity()));
 		Image::<Box<[T]>>::new(size, buffer.into_boxed_slice())
 	}
-	pub fn uninitialized(size: size) -> Self {
-		let len = (size.x * size.y) as usize;
-		let mut buffer = Vec::with_capacity(len);
-		unsafe{ buffer.set_len(len) };
-		Self::new(size, buffer.into_boxed_slice())
-	}
+	pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 	pub fn as_ref(&self) -> Image<&[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
 	pub fn as_mut(&mut self) -> Image<&mut [T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
