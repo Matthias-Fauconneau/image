@@ -8,6 +8,14 @@ pub struct Image<D> {
 }
 
 impl<D> Image<D> {
+	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!( x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
+	fn rect(&self) -> Rect { Rect::from(self.size) }
+}
+
+impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
+
+impl<D> Image<D> {
+	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
 	#[track_caller] pub fn strided<T>(size : size, data: D, stride: u32) -> Self where D:AsRef<[T]> {
 		assert_eq!(data.as_ref().len(), (stride*size.y) as usize);
 		Self{stride, size, data}
@@ -15,27 +23,8 @@ impl<D> Image<D> {
 	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(size, data, size.x) }
 }
 
-impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
-	pub fn cast_slice<U:bytemuck::Pod>(slice: &'t [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice(slice)) }
-}
-
-impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
-	pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice_mut(slice)) }
-}
-
-impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
-
 impl<D> Image<D> {
-	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!( x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
-	fn rect(&self) -> Rect { Rect::from(self.size) }
-}
-
-impl<D> std::convert::AsRef<D> for Image<&D> {
-	fn as_ref(&self) -> &D { &self.data }
-}
-
-impl<D> std::convert::AsMut<D> for Image<&mut D> {
-	fn as_mut(&mut self) -> &mut D { &mut self.data }
+	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
 
 impl<D> std::ops::Deref for Image<D> {
@@ -198,14 +187,20 @@ impl<T> Image<Box<[T]>> {
 		Image::<Box<[T]>>::new(size, buffer.into_boxed_slice())
 	}
 	pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
-	pub fn as_ref(&self) -> Image<&[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
-	pub fn as_mut(&mut self) -> Image<&mut [T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
 impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
 impl<T:num::Zero> Image<Box<[T]>> {
 	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
+}
+
+impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
+	pub fn cast_slice<U:bytemuck::Pod>(slice: &'t [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice(slice)) }
+}
+
+impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
+	pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice_mut(slice)) }
 }
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
