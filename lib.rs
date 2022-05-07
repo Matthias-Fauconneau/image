@@ -1,4 +1,5 @@
 #![feature(once_cell,array_zip,type_alias_impl_trait,slice_take,new_uninit)]
+#![allow(non_upper_case_globals)]
 use vector::{size, xy, uint2, Rect};
 
 pub struct Image<D> {
@@ -9,7 +10,7 @@ pub struct Image<D> {
 
 impl<D> Image<D> {
 	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!( x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
-	fn rect(&self) -> Rect { Rect::from(self.size) }
+	fn rect(&self) -> Rect { self.size.into() }
 }
 
 impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
@@ -226,11 +227,13 @@ pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
 	image.modify(|bgra8{b,g,r,..}| bgra8{b:if m.b {0xFF-b} else {*b}, g: if m.g {0xFF-g} else {*g}, r: if m.r {0xFF-r} else {*r}, a:0xFF});
 }
 
-use std::lazy::SyncLazy;
-#[allow(non_upper_case_globals)] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(||{use iter::IntoConstSizeIterator;  iter::generate(|i| {
-	let linear = i as f64 / 0xFFF as f64;
-	(0xFF as f64 * if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear}).round() as u8
-}).collect()});
-#[allow(non_snake_case)] pub fn sRGB(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB(&v.b), g:sRGB(&v.g), r:sRGB(&v.r), a:0xFF} } }
-#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB)) }
+#[cfg(any(feature="iter",feature="arrayvec"))] #[allow(non_snake_case)] pub mod sRGB {
+	use std::lazy::SyncLazy;
+	fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+	#[cfg(feature="iter")] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| iter::eval(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
+	#[cfg(feature="arrayvec")] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| arrayvec::ArrayVec::from_iter((0..0x1000).map(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8)).into_inner().unwrap());
+	#[allow(non_snake_case)] pub fn sRGB8(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+	use super::*;
+	impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB8(&v.b), g:sRGB8(&v.g), r:sRGB8(&v.r), a:0xFF} } }
+	#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(sRGB8)) }
+}
