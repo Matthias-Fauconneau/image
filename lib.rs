@@ -228,10 +228,10 @@ pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
 }
 
 #[cfg(any(feature="iter",feature="arrayvec"))] #[allow(non_snake_case)] pub mod sRGB {
-	use std::lazy::SyncLazy;
+	use std::sync::LazyLock;
 	fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
-	#[cfg(feature="iter")] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| iter::eval(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
-	#[cfg(feature="arrayvec")] static sRGB_forward12 : SyncLazy<[u8; 0x1000]> = SyncLazy::new(|| arrayvec::ArrayVec::from_iter((0..0x1000).map(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8)).into_inner().unwrap());
+	#[cfg(feature="iter")] static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| iter::eval(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
+	#[cfg(feature="arrayvec")] static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| arrayvec::ArrayVec::from_iter((0..0x1000).map(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8)).into_inner().unwrap());
 	#[allow(non_snake_case)] pub fn sRGB8(v : &f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 	use super::*;
 	impl From<bgrf> for bgra8 { fn from(v: bgrf) -> Self { Self{b:sRGB8(&v.b), g:sRGB8(&v.g), r:sRGB8(&v.r), a:0xFF} } }
