@@ -4,15 +4,4 @@ lib= {path= 'lib.rs'}
 [dependencies]
 num= {git='https://github.com/Matthias-Fauconneau/num'}
 vector= {git='https://github.com/Matthias-Fauconneau/vector'}
-iter= {git='https://github.com/Matthias-Fauconneau/iter', optional=true}
-arrayvec= {version='*', optional=true}
 bytemuck='*'
-
-#[patch.'https://github.com/Matthias-Fauconneau/num']
-#num={path='../num'}
-#[patch.'https://github.com/Matthias-Fauconneau/vector']
-#vector={path='../vector'}
-
-[profile.dev] # Optimize fill, set_map, from_linear
-opt-level= 3
-overflow-checks= false
