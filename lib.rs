@@ -1,4 +1,4 @@
-#![feature(once_cell,array_zip,type_alias_impl_trait,slice_take,new_uninit)]
+#![feature(once_cell,type_alias_impl_trait,slice_take,new_uninit)]
 #![allow(non_upper_case_globals)]
 use vector::{size, xy, uint2, Rect};
 
@@ -8,23 +8,19 @@ pub struct Image<D> {
 	pub stride : u32,
 }
 
-impl<D> Image<D> {
-	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!( x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
-	fn rect(&self) -> Rect { self.size.into() }
-}
-
 impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
 
 impl<D> Image<D> {
-	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
-	#[track_caller] pub fn strided<T>(size : size, data: D, stride: u32) -> Self where D:AsRef<[T]> {
-		assert_eq!(data.as_ref().len(), (stride*size.y) as usize);
-		Self{stride, size, data}
-	}
-	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(size, data, size.x) }
-}
+	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!(x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
+	fn rect(&self) -> Rect { self.size.into() }
 
-impl<D> Image<D> {
+	#[track_caller] pub fn strided<T>(data: D, size : size, stride: u32) -> Self where D:AsRef<[T]> {
+		assert_eq!(data.as_ref().len(), (stride*size.y) as usize);
+		Self{data, size, stride}
+	}
+	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(data, size, size.x) }
+
+	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
 	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
 }
 
@@ -39,14 +35,14 @@ impl<D> std::ops::DerefMut for Image<D> {
 
 impl<T, D:std::ops::Deref<Target=[T]>> std::ops::Index<usize> for Image<D> {
 	type Output=T;
-	fn index(&self, i:usize) -> &Self::Output { &self.deref()[i] }
+	fn index(&self, i:usize) -> &Self::Output { &self.data[i] }
 }
 impl<T, D:std::ops::DerefMut<Target=[T]>> std::ops::IndexMut<usize> for Image<D> {
-	fn index_mut(&mut self, i:usize) -> &mut Self::Output { &mut self.deref_mut()[i] }
+	fn index_mut(&mut self, i:usize) -> &mut Self::Output { &mut self.data[i] }
 }
 
-impl<T, D:std::ops::Deref<Target=[T]>> std::ops::Index<uint2> for Image<D> {
-	type Output=T;
+impl<D> std::ops::Index<uint2> for Image<D> where Self: std::ops::Index<usize> {
+	type Output = <Self as std::ops::Index<usize>>::Output;
 	fn index(&self, i:uint2) -> &Self::Output { &self[self.index(i)] }
 }
 impl<T, D:std::ops::DerefMut<Target=[T]>> std::ops::IndexMut<uint2> for Image<D> {
@@ -182,11 +178,7 @@ impl<T:Send> Image<&mut [T]> {
 }
 
 impl<T> Image<Box<[T]>> {
-	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self {
-		let mut buffer = Vec::with_capacity((size.y*size.x) as usize);
-		buffer.extend(iter.into_iter().take(buffer.capacity()));
-		Image::<Box<[T]>>::new(size, buffer.into_boxed_slice())
-	}
+	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
 	pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 }
 impl<T:Copy> Image<Box<[T]>> {
@@ -201,7 +193,7 @@ impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
 }
 
 impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
-	pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size) -> Self { Self::new(size, bytemuck::cast_slice_mut(slice)) }
+	pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size, stride: u32) -> Self { Self::strided(bytemuck::cast_slice_mut(slice), size, stride) }
 }
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
