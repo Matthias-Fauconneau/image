@@ -20,8 +20,8 @@ impl<D> Image<D> {
 	}
 	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(data, size, size.x) }
 
-	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_ref()} }
-	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{stride:self.stride, size:self.size, data: self.data.as_mut()} }
+	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{data: self.data.as_ref(), size: self.size, stride: self.stride} }
+	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{data: self.data.as_mut(), size:self.size, stride: self.stride} }
 }
 
 impl<D> std::ops::Deref for Image<D> {
@@ -45,7 +45,7 @@ impl<D> std::ops::Index<uint2> for Image<D> where Self: std::ops::Index<usize> {
 	type Output = <Self as std::ops::Index<usize>>::Output;
 	fn index(&self, i:uint2) -> &Self::Output { &self[self.index(i)] }
 }
-impl<T, D:std::ops::DerefMut<Target=[T]>> std::ops::IndexMut<uint2> for Image<D> {
+impl<D> std::ops::IndexMut<uint2> for Image<D> where Self: std::ops::IndexMut<usize> {
 	fn index_mut(&mut self, i:uint2) -> &mut Self::Output { let i = self.index(i); &mut self[i] }
 }
 
@@ -66,7 +66,7 @@ impl<T, D:std::ops::DerefMut<Target=[T]>> Image<D> {
 		Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &mut self.data[(rows.start*self.stride) as usize..]}
 	}
 	#[track_caller] pub fn slice_mut(&mut self, offset: uint2, size: size) -> Image<&mut[T]> {
-		assert!(offset.x+size.x <= self.size.x && offset.y < self.size.y && offset.y+size.y <= self.size.y && self.data.len() >= (offset.y*self.stride+offset.x) as usize,"{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
+		assert!(offset.x < self.size.x && offset.x.checked_add(size.x).unwrap() <= self.size.x && offset.y < self.size.y && offset.y.checked_add(size.y).unwrap() <= self.size.y && self.data.len() >= (offset.y*self.stride+offset.x) as usize,"{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		Image{size, stride: self.stride, data: &mut self.data[(offset.y*self.stride+offset.x) as usize..]}
 	}
 	#[track_caller] pub fn slice_mut_clip(&mut self, sub: Rect) -> Option<Image<&mut[T]>> {
@@ -122,7 +122,7 @@ pub fn segment(total_length: u32, segment_count: u32) -> impl Iterator<Item=std:
 //impl<I:Iterator<Item:FnOnce()>> Execute for I {}
 
 impl<T:Send> Image<&mut [T]> {
-	pub fn set<F:Fn(uint2)->T+Copy+Send>(&mut self, f:F) {
+	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy/*+Send*/>(&mut self, f:F) {
 		/*let mut target = self.take_mut(0);
 		segment(target.size.y, 1/*8*/)
 		.map(|segment| {
@@ -177,6 +177,8 @@ impl<T:Send> Image<&mut [T]> {
 	}
 }
 
+pub fn fill<T:Copy+Send>(target: &mut Image<&mut [T]>, value: T) { target.set(|_| value) }
+
 impl<T> Image<Box<[T]>> {
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
 	pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
@@ -193,7 +195,7 @@ impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
 }
 
 impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
-	pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size, stride: u32) -> Self { Self::strided(bytemuck::cast_slice_mut(slice), size, stride) }
+	#[track_caller] pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size, stride: u32) -> Self { Self::strided(bytemuck::cast_slice_mut(slice), size, stride) }
 }
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
@@ -211,18 +213,28 @@ impl bgra8 {
 mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
 impl From<rgb<u8>> for bgra<u8> { fn from(v: rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
 
-pub fn fill(target: &mut Image<&mut [bgra8]>, value: bgra8) { target.set(|_| value) }
-pub fn multiply(target: &mut Image<&mut [bgra8]>, bgr{b,g,r}: bgrf, source: &Image<&[u8]>) {
-	let bgr{b,g,r} = bgr{b: (b*256.) as u16, g: (g*256.) as u16, r: (r*256.) as u16};
-	target.set_map(source, |_,&source| { let s = source as u16; bgra{a : 0xFF, b: ((s*b)>>8) as u8, g: ((s*g)>>8) as u8, r: ((s*r)>>8) as u8}}) // /0xFF00
+pub fn multiply(target: &mut Image<&mut [u32]>, bgr{b,g,r}: bgrf, source: &Image<&[u16]>) {
+	let bgr{b,g,r} = bgr{b: (b*1024.) as u32, g: (g*1024.) as u32, r: (r*1024.) as u32};
+	target.set_map(source, |_,&source| {
+		let s = source as u32;
+		let bgr{b,g,r} = bgr{b: (s*b)>>10, g: (s*g)>>10, r: (s*r)>>10};
+		(b<<20) | (g<<10) | r
+	})
 }
-pub fn invert(image: &mut Image<&mut [bgra8]>, m: bgr<bool>) {
-	image.modify(|bgra{b,g,r,..}| bgra{b:if m.b {0xFF-b} else {*b}, g: if m.g {0xFF-g} else {*g}, r: if m.r {0xFF-r} else {*r}, a:0xFF});
+pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) {
+	image.modify(|bgr| {
+		let bgr{b,g,r} = bgr{b: (bgr >> 20) & 0x3FF, g: (bgr >> 10) & 0x3FF, r: (bgr >> 00) & 0x3FF};
+		let bgr{b,g,r} = bgr{b: if m.b {0x3FF-b} else {b}, g: if m.g {0x3FF-g} else {g}, r: if m.r {0x3FF-r} else {r}};
+		(b << 20)| (g << 10) | r
+	})
 }
 
-use std::sync::LazyLock;
-#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+//use std::sync::LazyLock;
+#[allow(non_snake_case)] pub fn PQ10(v: f32) -> u16 { (0x3FF as f32*v) as u16 } // TODO
+impl From<bgrf> for u32 { fn from(bgr{b,g,r}: bgrf) -> Self { let bgr{b,g,r} = bgr{b: PQ10(b), g: PQ10(g), r: PQ10(r)}; ((b as u32) << 20) | ((g as u32) << 10) | (r as u32) } }
+#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
+/*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| std::array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
 #[allow(non_snake_case)] pub fn sRGB8(v: f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 impl From<bgrf> for bgra8 { fn from(bgr{b,g,r}: bgrf) -> Self { Self{b:sRGB8(b), g:sRGB8(g), r:sRGB8(r), a:0xFF} } }
-#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| sRGB8(v))) }
+#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| sRGB8(v))) }*/
