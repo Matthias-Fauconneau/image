@@ -8,7 +8,7 @@ pub struct Image<D> {
 	pub stride : u32,
 }
 
-impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { write!(f, "{:?} {:?}", self.size, self.stride) } }
+impl<D> std::fmt::Debug for Image<D> { fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(),std::fmt::Error> { assert!(self.stride == self.size.x); write!(f, "{:?}", self.size) } }
 
 impl<D> Image<D> {
 	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!(x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
