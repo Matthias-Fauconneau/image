@@ -1,6 +1,6 @@
 #![feature(once_cell,type_alias_impl_trait,slice_take,new_uninit)]
 #![allow(non_upper_case_globals)]
-use vector::{size, xy, uint2, Rect};
+use vector::{size, xy, uint2, Rect, Lerp};
 
 pub struct Image<D> {
 	pub data : D,
@@ -114,66 +114,12 @@ pub fn segment(total_length: u32, segment_count: u32) -> impl Iterator<Item=std:
 	.map(|(start, end)| start..end)
 }
 
-//#[cfg(not(feature="thread"))] trait Execute : Iterator<Item:FnOnce()>+Sized { fn execute(self) { self.for_each(|task| task()) } }
-/*#[cfg(feature="thread")] trait Execute : Iterator<Item:FnOnce()>+Sized { fn execute(self) {
-    use crate::{core::array::{Iterator, IntoIterator}};
-    Iterator::collect::<[_;N]>( iter.map(|task| unsafe { std::thread::Builder::new().spawn_unchecked(task) } ) ).into_iter().for_each(|t| t.join().unwrap())
-}}*/
-//impl<I:Iterator<Item:FnOnce()>> Execute for I {}
-
 impl<T:Send> Image<&mut [T]> {
-	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy/*+Send*/>(&mut self, f:F) {
-		/*let mut target = self.take_mut(0);
-		segment(target.size.y, 1/*8*/)
-		.map(|segment| {
-				let target = target.take_mut(segment.len() as u32);
-				move || {
-						for (y, target) in segment.zip(target) {
-								for (x, target) in target.iter_mut().enumerate() {
-										*target = f(uint2{x: x as u32,y});
-								}
-						}
-				}
-		})
-		.execute()*/
-		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } }
-	}
-	pub fn modify<F:Fn(&T)->T+Copy+Send>(&mut self, f:F) {
-		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } }
-	}
-	pub fn set_map<U:Send+Sync, D:std::ops::Deref<Target=[U]>+Send, F:Fn(uint2,&U)->T+Copy+Send>(&mut self, source: &Image<D>, f: F) {
+	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
+	pub fn map<F:Fn(&T)->T+Copy+Send>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
+	pub fn zip<U:Send+Sync, D:std::ops::Deref<Target=[U]>+Send, F:Fn(&T,&U)->T+Copy+Send>(&mut self, source: &Image<D>, f: F) {
 		assert!(self.size == source.size);
-		/*segment(self.size.y, 1/*8*/)
-		.map(|segment| {
-				let target = self.take_mut(segment.len() as u32);
-				let source = source.slice(uint2{x:0, y:segment.start}, size2{x:source.size.x, y:segment.len() as u32});
-				move || {
-						for (y, (target, source)) in segment.zip(target.zip(source)) {
-								for (x, (target, source)) in target.iter_mut().zip(source).enumerate() {
-										*target = f(uint2{x:x as u32, y}, *source);
-								}
-						}
-				}
-		})
-		.execute()*/
-		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}, &source[xy{x,y}]); } }
-	}
-	pub fn zip_map<U:Send+Sync, D:std::ops::Deref<Target=[U]>+Send, F:Fn(uint2,&T,&U)->T+Copy+Send>(&mut self, source: Image<D>, f: F) {
-		assert!(self.size == source.size);
-		/*segment(self.size.y, 1/*8*/)
-		.map(|segment| {
-				let target = self.take_mut(segment.len() as u32);
-				let source = source.slice(uint2{x:0, y:segment.start}, size2{x:source.size.x, y:segment.len() as u32});
-				move || {
-						for (y, (target, source)) in segment.zip(target.zip(source)) {
-								for (x, (target, source)) in target.iter_mut().zip(source).enumerate() {
-										*target = f(uint2{x:x as u32, y}, *target, *source);
-								}
-						}
-				}
-		})
-		.execute()*/
-		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}, &self[xy{x,y}], &source[xy{x,y}]); } }
+		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}], &source[xy{x,y}]); } }
 	}
 }
 
@@ -202,7 +148,7 @@ mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use 
 #[allow(non_camel_case_types)] pub type bgrf = bgr<f32>;
 impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 
-mod vector_bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); } pub use vector_bgra::bgra;
+/*mod vector_bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); } pub use vector_bgra::bgra;
 #[allow(non_camel_case_types)] pub type bgra8 = bgra<u8>;
 impl bgra8 {
 	#[must_use] pub fn saturating_add(self, b: Self) -> Self { self.into_iter().zip(b).map(|(a,b)| a.saturating_add(b)).collect() }
@@ -211,30 +157,33 @@ impl bgra8 {
 //impl<T> From<bgr<T>> for bgra::bgra<T> { fn from(v: bgr<T>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:T::MAX} } }
 //impl From<bgr<u8>> for bgra::bgra<u8> { fn from(v: bgr<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
 mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
-impl From<rgb<u8>> for bgra<u8> { fn from(v: rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
+impl From<rgb<u8>> for bgra<u8> { fn from(v: rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }*/
 
-pub fn multiply(target: &mut Image<&mut [u32]>, bgr{b,g,r}: bgrf, source: &Image<&[u16]>) {
+impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 20) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 00) as u16 & 0x3FF} } }
+impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { ((b as u32) << 20) | ((g as u32) << 10) | (r as u32) } }
+/*pub fn multiply(target: &mut Image<&mut [u32]>, bgr{b,g,r}: bgrf, source: &Image<&[u16]>) {
 	let bgr{b,g,r} = bgr{b: (b*1024.) as u32, g: (g*1024.) as u32, r: (r*1024.) as u32};
 	target.set_map(source, |_,&source| {
 		let s = source as u32;
 		let bgr{b,g,r} = bgr{b: (s*b)>>10, g: (s*g)>>10, r: (s*r)>>10};
 		(b<<20) | (g<<10) | r
 	})
-}
+}*/
 pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) {
-	image.modify(|bgr| {
-		let bgr{b,g,r} = bgr{b: (bgr >> 20) & 0x3FF, g: (bgr >> 10) & 0x3FF, r: (bgr >> 00) & 0x3FF};
-		let bgr{b,g,r} = bgr{b: if m.b {0x3FF-b} else {b}, g: if m.g {0x3FF-g} else {g}, r: if m.r {0x3FF-r} else {r}};
-		(b << 20)| (g << 10) | r
-	})
+	image.map(|&bgr| { let bgr{b,g,r} = bgr::<u16>::from(bgr); bgr{b: if m.b {0x3FF-b} else {b}, g: if m.g {0x3FF-g} else {g}, r: if m.r {0x3FF-r} else {r}}.into()})
 }
 
 //use std::sync::LazyLock;
 #[allow(non_snake_case)] pub fn PQ10(v: f32) -> u16 { (0x3FF as f32*v) as u16 } // TODO
-impl From<bgrf> for u32 { fn from(bgr{b,g,r}: bgrf) -> Self { let bgr{b,g,r} = bgr{b: PQ10(b), g: PQ10(g), r: PQ10(r)}; ((b as u32) << 20) | ((g as u32) << 10) | (r as u32) } }
-#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
+impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr.map(|&c| PQ10(c)).into() } }
+#[allow(non_snake_case)] pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
 /*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| std::array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
 #[allow(non_snake_case)] pub fn sRGB8(v: f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 impl From<bgrf> for bgra8 { fn from(bgr{b,g,r}: bgrf) -> Self { Self{b:sRGB8(b), g:sRGB8(g), r:sRGB8(r), a:0xFF} } }
 #[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| sRGB8(v))) }*/
+#[allow(non_snake_case)] pub fn PQ10_inverse(v: u16) -> f32 { v as f32/0x3FF as f32 } // TODO
+impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|&c| PQ10_inverse(c)) } }
+
+pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
+pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip(mask, |&target, &t| lerp(t, target, color)); }
