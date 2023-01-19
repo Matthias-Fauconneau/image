@@ -1,4 +1,4 @@
-#![feature(once_cell,type_alias_impl_trait,slice_take,new_uninit)]
+#![feature(once_cell,type_alias_impl_trait,slice_take,new_uninit,const_trait_impl)]
 #![allow(non_upper_case_globals)]
 use vector::{size, xy, uint2, Rect, Lerp};
 
