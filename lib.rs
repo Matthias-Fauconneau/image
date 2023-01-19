@@ -116,6 +116,7 @@ pub fn segment(total_length: u32, segment_count: u32) -> impl Iterator<Item=std:
 
 impl<T:Send> Image<&mut [T]> {
 	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
+	pub fn set_map<F:Fn(uint2,&T)->T+Copy+Send>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y},&self[xy{x,y}]); } } }
 	pub fn map<F:Fn(&T)->T+Copy+Send>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
 	pub fn zip<U:Send+Sync, D:std::ops::Deref<Target=[U]>+Send, F:Fn(&T,&U)->T+Copy+Send>(&mut self, source: &Image<D>, f: F) {
 		assert!(self.size == source.size);
