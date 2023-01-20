@@ -174,8 +174,22 @@ pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) {
 	image.map(|&bgr| { let bgr{b,g,r} = bgr::<u16>::from(bgr); bgr{b: if m.b {0x3FF-b} else {b}, g: if m.g {0x3FF-g} else {g}, r: if m.r {0x3FF-r} else {r}}.into()})
 }
 
+#[allow(non_snake_case)] fn PQ_inverse_EOTF(y: f32) -> f32 {
+	#![allow(non_upper_case_globals)]
+	const m1 : f32 = 2610./16384.;
+	const m2 : f32 = 128.*2523./4096.;
+	const c2 : f32 = 32.*2413./4096.;
+	const c3 : f32 = 32.*2392./4096.;
+	const c1 : f32 = c3-c2+1.;
+	((c1+c2*y.powf(m1))/(1.+c3*y.powf(m1))).powf(m2)
+}
 //use std::sync::LazyLock;
-#[allow(non_snake_case)] pub fn PQ10(v: f32) -> u16 { (0x3FF as f32*v) as u16 } // TODO
+#[allow(non_snake_case)] pub fn PQ10(v: f32) -> u16 {
+	assert!(v >= 0. && v <= 1.);
+	let PQ = PQ_inverse_EOTF((508./10000./*nit*/)*v);
+	assert!(PQ <= 1.);
+	(1023.*PQ).round() as u16
+}
 impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr.map(|&c| PQ10(c)).into() } }
 #[allow(non_snake_case)] pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
 /*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
