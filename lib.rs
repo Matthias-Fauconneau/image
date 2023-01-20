@@ -183,20 +183,26 @@ pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) {
 	const c1 : f32 = c3-c2+1.;
 	((c1+c2*y.powf(m1))/(1.+c3*y.powf(m1))).powf(m2)
 }
-//use std::sync::LazyLock;
-#[allow(non_snake_case)] pub fn PQ10(v: f32) -> u16 {
+#[allow(non_snake_case)] pub fn do_PQ10(v: f32) -> u16 {
 	assert!(v >= 0. && v <= 1.);
 	let PQ = PQ_inverse_EOTF((508./10000./*nit*/)*v);
 	assert!(PQ <= 1.);
 	(1023.*PQ).round() as u16
 }
+
+use std::sync::LazyLock;
+static PQ10_forward14 : LazyLock<[u16; 0x4000]> = LazyLock::new(|| std::array::from_fn(|i|do_PQ10(i as f32 / 0x3FFF as f32)));
+#[allow(non_snake_case)] pub fn PQ10(v: f32) -> u16 { PQ10_forward14[(0x3FFF as f32*v) as usize] } // 32K (fixme: interpolation of a smaller table might be more efficient)
+
 impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr.map(|&c| PQ10(c)).into() } }
 #[allow(non_snake_case)] pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
+
 /*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| std::array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
 #[allow(non_snake_case)] pub fn sRGB8(v: f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 impl From<bgrf> for bgra8 { fn from(bgr{b,g,r}: bgrf) -> Self { Self{b:sRGB8(b), g:sRGB8(g), r:sRGB8(r), a:0xFF} } }
 #[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| sRGB8(v))) }*/
+
 #[allow(non_snake_case)] pub fn PQ10_inverse(v: u16) -> f32 { v as f32/0x3FF as f32 } // TODO
 impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|&c| PQ10_inverse(c)) } }
 
