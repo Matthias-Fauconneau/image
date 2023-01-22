@@ -1,6 +1,7 @@
 #![feature(once_cell,type_alias_impl_trait,slice_take,new_uninit,const_trait_impl)]
 #![allow(non_upper_case_globals)]
-use vector::{size, xy, uint2, Rect, Lerp};
+pub use vector::xy;
+use vector::{size, uint2, Rect, Lerp};
 
 pub struct Image<D> {
 	pub data : D,
@@ -146,6 +147,8 @@ impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
 }
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
+mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
+
 #[allow(non_camel_case_types)] pub type bgrf = bgr<f32>;
 impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 
@@ -157,7 +160,6 @@ impl bgra8 {
 }
 //impl<T> From<bgr<T>> for bgra::bgra<T> { fn from(v: bgr<T>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:T::MAX} } }
 //impl From<bgr<u8>> for bgra::bgra<u8> { fn from(v: bgr<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }
-mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
 impl From<rgb<u8>> for bgra<u8> { fn from(v: rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }*/
 
 impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 20) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 00) as u16 & 0x3FF} } }
@@ -197,14 +199,21 @@ static PQ10_forward14 : LazyLock<[u16; 0x4000]> = LazyLock::new(|| std::array::f
 impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr.map(|&c| PQ10(c)).into() } }
 #[allow(non_snake_case)] pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
 
-/*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
-static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| std::array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
-#[allow(non_snake_case)] pub fn sRGB8(v: f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-impl From<bgrf> for bgra8 { fn from(bgr{b,g,r}: bgrf) -> Self { Self{b:sRGB8(b), g:sRGB8(g), r:sRGB8(r), a:0xFF} } }
-#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| sRGB8(v))) }*/
-
 #[allow(non_snake_case)] pub fn PQ10_inverse(v: u16) -> f32 { v as f32/0x3FF as f32 } // TODO
 impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|&c| PQ10_inverse(c)) } }
 
 pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
 pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip(mask, |&target, &t| lerp(t, target, color)); }
+
+#[allow(non_upper_case_globals)] const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| std::array::from_fn(|i| {
+    let x = i as f32 / 255.;
+    do_PQ10(if x > 0.04045 { f32::powf((x+0.055)/1.055, 2.4) } else { x / 12.92 })
+}));
+#[allow(non_camel_case_types)] pub type rgb8 = rgb<u8>;
+impl From<rgb8> for u32 { fn from(rgb{r,g,b}: rgb8) -> Self { bgr{b: sRGB_to_PQ10[b as usize], g: sRGB_to_PQ10[g as usize], r: sRGB_to_PQ10[r as usize]}.into() } }
+
+/*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| std::array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
+#[allow(non_snake_case)] pub fn sRGB8(v: f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+impl From<bgrf> for bgra8 { fn from(bgr{b,g,r}: bgrf) -> Self { Self{b:sRGB8(b), g:sRGB8(g), r:sRGB8(r), a:0xFF} } }
+#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| sRGB8(v))) }*/
