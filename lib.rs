@@ -1,7 +1,7 @@
 #![feature(once_cell,type_alias_impl_trait,slice_take,new_uninit,const_trait_impl)]
 #![allow(non_upper_case_globals)]
-pub use vector::xy;
-use vector::{size, uint2, Rect, Lerp};
+pub use vector::{xy, size};
+use vector::{uint2, Rect, Lerp};
 
 pub struct Image<D> {
 	pub data : D,
@@ -187,7 +187,7 @@ pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) {
 }
 #[allow(non_snake_case)] pub fn do_PQ10(v: f32) -> u16 {
 	assert!(v >= 0. && v <= 1.);
-	let PQ = PQ_inverse_EOTF((508./10000./*nit*/)*v);
+	let PQ = PQ_inverse_EOTF((/*507.620*/10000./10000./*nit*/)*v);
 	assert!(PQ <= 1.);
 	(1023.*PQ).round() as u16
 }
