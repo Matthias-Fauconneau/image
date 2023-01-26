@@ -205,12 +205,13 @@ impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|&c| PQ
 pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
 pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip(mask, |&target, &t| lerp(t, target, color)); }
 
-#[allow(non_upper_case_globals)] const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| std::array::from_fn(|i| {
+#[allow(non_upper_case_globals)] pub const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| std::array::from_fn(|i| {
     let x = i as f32 / 255.;
     do_PQ10(if x > 0.04045 { f32::powf((x+0.055)/1.055, 2.4) } else { x / 12.92 })
 }));
 #[allow(non_camel_case_types)] pub type rgb8 = rgb<u8>;
-impl From<rgb8> for u32 { fn from(rgb{r,g,b}: rgb8) -> Self { bgr{b: sRGB_to_PQ10[b as usize], g: sRGB_to_PQ10[g as usize], r: sRGB_to_PQ10[r as usize]}.into() } }
+pub fn rgb8_to_10(map: &[u16; 256], rgb{r,g,b}: rgb8) -> u32 { bgr{b: map[b as usize], g: map[g as usize], r: map[r as usize]}.into() }
+//impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: sRGB_to_PQ10.deref() is too slow for image conversion
 
 /*#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| std::array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
