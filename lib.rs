@@ -163,7 +163,7 @@ impl bgra8 {
 impl From<rgb<u8>> for bgra<u8> { fn from(v: rgb<u8>) -> Self { Self{b:v.b, g:v.g, r:v.r, a:u8::MAX} } }*/
 
 impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 20) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 00) as u16 & 0x3FF} } }
-impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { ((b as u32) << 20) | ((g as u32) << 10) | (r as u32) } }
+impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
 /*pub fn multiply(target: &mut Image<&mut [u32]>, bgr{b,g,r}: bgrf, source: &Image<&[u16]>) {
 	let bgr{b,g,r} = bgr{b: (b*1024.) as u32, g: (g*1024.) as u32, r: (r*1024.) as u32};
 	target.set_map(source, |_,&source| {
