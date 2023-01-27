@@ -114,11 +114,11 @@ pub fn segment(total_length: u32, segment_count: u32) -> impl Iterator<Item=Rang
 	.map(|(start, end)| start..end)
 }
 
-impl<T:Send> Image<&mut [T]> {
+impl<T> Image<&mut [T]> {
 	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
-	pub fn set_map<F:Fn(uint2,&T)->T+Copy+Send>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y},&self[xy{x,y}]); } } }
-	pub fn map<F:Fn(&T)->T+Copy+Send>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
-	pub fn zip<U:Send+Sync, D:Deref<Target=[U]>+Send, F:Fn(&T,&U)->T+Copy+Send>(&mut self, source: &Image<D>, f: F) {
+	pub fn set_map<F:Fn(uint2,&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y},&self[xy{x,y}]); } } }
+	pub fn map<F:Fn(&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
+	pub fn zip_map<U, D:Deref<Target=[U]>, F: Fn(&T,&U)->T+Copy>(&mut self, source: &Image<D>, f: F) {
 		assert!(self.size == source.size);
 		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}], &source[xy{x,y}]); } }
 	}
@@ -159,7 +159,7 @@ impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as 
 impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
 
 pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
-pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip(mask, |&target, &t| lerp(t, target, color)); }
+pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip_map(mask, |&target, &t| lerp(t, target, color)); }
 
 pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) { image.map(|&bgr| { m.zip(bgr::<u16>::from(bgr)).map(|(m,c)| if m {0x3FF-c} else {c}).into()}) }
 
