@@ -1,7 +1,7 @@
 #![feature(once_cell, type_alias_impl_trait, slice_take, new_uninit, const_trait_impl, generic_arg_infer, array_zip)]
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 pub use vector::{xy, size};
-use vector::{uint2, Rect, Lerp};
+use {num::Lerp, vector::{uint2, Rect}};
 
 pub struct Image<D> {
 	pub data : D,
@@ -156,7 +156,7 @@ pub type bgrf = bgr<f32>;
 impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 
 impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 20) as u16 & 0x3FF} } }
-impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
+impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { assert!(r<0x400 && g<0x400 && b<0x400,"{r} {g} {b}"); ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
 
 pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
 pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip_map(mask, |&target, &t| lerp(t, target, color)); }
