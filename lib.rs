@@ -158,9 +158,6 @@ impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g
 impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 20) as u16 & 0x3FF} } }
 impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { assert!(r<0x400 && g<0x400 && b<0x400,"{r} {g} {b}"); ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
 
-pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
-pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip_map(mask, |&target, &t| lerp(t, target, color)); }
-
 pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) { image.map(|&bgr| { m.zip(bgr::<u16>::from(bgr)).map(|(m,c)| if m {0x3FF-c} else {c}).into()}) }
 
 // PQ
@@ -183,6 +180,11 @@ pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::f
 pub fn from_PQ10(pq: u16) -> f32 { PQ10_EOTF[pq as usize] }
 impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|c| from_PQ10(c)) } }
 
+pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
+pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip_map(mask, |&target, &t| lerp(t, target, color)); }
+
+// sRGB
+
 pub fn PQ_inverse_EOTF(y: f64) -> f64 { ((c1+c2*y.powf(m1))/(1.+c3*y.powf(m1))).powf(m2) }
 pub fn PQ10_inverse_EOTF(v: f64) -> u16 {
 	assert!(v >= 0. && v <= 1.);
@@ -191,11 +193,10 @@ pub fn PQ10_inverse_EOTF(v: f64) -> u16 {
 	(1023.*PQ).round() as u16
 }
 
-// sRGB
 pub const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| array::from_fn(|i| {
     let x = i as f64 / 255.;
     PQ10_inverse_EOTF(if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 })
 }));
 pub type rgb8 = rgb<u8>;
 pub fn rgb8_to_10(map: &[u16; 256], rgb{r,g,b}: rgb8) -> u32 { bgr{b: map[b as usize], g: map[g as usize], r: map[r as usize]}.into() }
-//impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: sRGB_to_PQ10.deref() is too slow for image conversion
+//impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: LazyLock::deref(sRGB_to_PQ10) is too slow for image conversion
