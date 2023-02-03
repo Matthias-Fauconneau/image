@@ -169,7 +169,7 @@ const c1 : f64 = c3-c2+1.;
 
 pub fn PQ_EOTF(pq: f64) -> f64 { (f64::max(0., pq.powf(1./m2)-c1) / (c2 - c3*pq.powf(1./m2))).powf(1./m1) } // /10Kcd
 use std::{array, sync::LazyLock};
-static PQ10_EOTF : LazyLock<[f32; 0x400]> = LazyLock::new(|| std::array::from_fn(|pq|PQ_EOTF(pq as f64 / 0x3FF as f64) as f32));
+pub static PQ10_EOTF : LazyLock<[f32; 0x400]> = LazyLock::new(|| std::array::from_fn(|pq|PQ_EOTF(pq as f64 / 0x3FF as f64) as f32));
 pub fn PQ10(x: f32) -> u16 {
 	let (mut left, mut right) = (0, PQ10_EOTF.len()); while left < right { let mid = left + (right - left) / 2; if PQ10_EOTF[mid] < x { left = mid + 1; } else { right = mid; } }
 	left as u16
@@ -177,7 +177,7 @@ pub fn PQ10(x: f32) -> u16 {
 impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr.map(|c| PQ10(c)).into() } }
 pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
 
-pub fn from_PQ10(pq: u16) -> f32 { PQ10_EOTF[pq as usize] }
+pub fn from_PQ10(pq: u16) -> f32 { PQ10_EOTF[pq as usize] } // FIXME: LazyLock::deref(PQ10_EOTF) is too slow for image conversion
 impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|c| from_PQ10(c)) } }
 
 pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
