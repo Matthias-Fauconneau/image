@@ -155,7 +155,22 @@ mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use 
 pub type bgrf = bgr<f32>;
 impl bgrf { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 
-impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 20) as u16 & 0x3FF} } }
+impl From<u32> for bgr<u8> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF} } }
+
+#[allow(non_snake_case)] fn sRGB(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+use std::{array, sync::LazyLock};
+static sRGB_forward12 : LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB(i as f64 / 0xFFF as f64)).round() as u8));
+#[allow(non_snake_case)] pub fn sRGB8(v: f32) -> u8 { sRGB_forward12[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+//impl From<bgrf> for bgr<u8> { fn from(bgr{b,g,r}: bgrf) -> Self { Self{b:sRGB8(b), g:sRGB8(g), r:sRGB8(r)} } }
+impl From<bgrf> for u32 { fn from(bgr{b,g,r}: bgrf) -> Self { (sRGB8(r) as u32) << 8 | (sRGB8(g) as u32) << 16 | sRGB8(b) as u32 } }
+#[allow(non_snake_case)] pub fn from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { Image::from_iter(linear.size, linear.data.iter().map(|&
+v| sRGB8(v))) }
+
+pub const from_sRGB : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
+impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|c:u8| from_sRGB[c as usize]) } }
+pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
+
+/*impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 20) as u16 & 0x3FF} } }
 impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { assert!(r<0x400 && g<0x400 && b<0x400,"{r} {g} {b}"); ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
 
 pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) { image.map(|&bgr| { m.zip(bgr::<u16>::from(bgr)).map(|(m,c)| if m {0x3FF-c} else {c}).into()}) }
@@ -199,4 +214,4 @@ pub const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| array::from_fn(
 }));
 pub type rgb8 = rgb<u8>;
 pub fn rgb8_to_10(map: &[u16; 256], rgb{r,g,b}: rgb8) -> u32 { bgr{b: map[b as usize], g: map[g as usize], r: map[r as usize]}.into() }
-//impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: LazyLock::deref(sRGB_to_PQ10) is too slow for image conversion
+//impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: LazyLock::deref(sRGB_to_PQ10) is too slow for image conversion*/
