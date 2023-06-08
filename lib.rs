@@ -1,4 +1,4 @@
-#![feature(once_cell, type_alias_impl_trait, slice_take, new_uninit, const_trait_impl, generic_arg_infer, array_zip)]
+#![feature(lazy_cell, type_alias_impl_trait, slice_take, new_uninit, const_trait_impl, generic_arg_infer)]
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 pub use vector::{xy, size};
 use {num::Lerp, vector::{uint2, Rect}};
