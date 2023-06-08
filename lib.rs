@@ -1,4 +1,10 @@
-#![feature(lazy_cell, type_alias_impl_trait, slice_take, new_uninit, const_trait_impl, generic_arg_infer)]
+#![cfg_attr(feature="lazy_cell",feature(lazy_cell))]
+#![cfg_attr(feature="type_alias_impl_trait",feature(type_alias_impl_trait))]
+#![cfg_attr(feature="slice_take",feature(slice_take))]
+#![cfg_attr(feature="new_uninit",feature(new_uninit))]
+#![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
+#![cfg_attr(feature="generic_arg_infer",feature(generic_arg_infer))]
+
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 pub use vector::{xy, size};
 use {num::Lerp, vector::{uint2, Rect}};
@@ -69,13 +75,13 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 		assert!(offset.x < self.size.x && offset.x.checked_add(size.x).unwrap() <= self.size.x && offset.y < self.size.y && offset.y.checked_add(size.y).unwrap() <= self.size.y && self.data.len() >= (offset.y*self.stride+offset.x) as usize,"{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		Image{size, stride: self.stride, data: &mut self.data[(offset.y*self.stride+offset.x) as usize..]}
 	}
-	#[track_caller] pub fn slice_mut_clip(&mut self, sub: Rect) -> Option<Image<&mut[T]>> {
+	#[cfg(feature="generic_arg_infer")] #[track_caller] pub fn slice_mut_clip(&mut self, sub: Rect) -> Option<Image<&mut[T]>> {
 		let sub = self.rect().clip(sub);
 		Some(self.slice_mut(sub.min.unsigned(), Some(sub.size()).filter(|s| s.x > 0 && s.y > 0)?))
 	}
 }
 
-impl<'t, T> Image<&'t [T]> {
+#[cfg(feature="slice_take")] impl<'t, T> Image<&'t [T]> {
 	pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
 		assert!(mid <= self.size.y);
 		self.size.y -= mid;
@@ -83,7 +89,7 @@ impl<'t, T> Image<&'t [T]> {
 	}
 }
 
-impl<'t, T> Image<&'t mut [T]> {
+#[cfg(feature="slice_take")] impl<'t, T> Image<&'t mut [T]> {
 	pub fn take_mut<'s>(&'s mut self, mid: u32) -> Image<&'t mut[T]> {
 		assert!(mid <= self.size.y);
 		self.size.y -= mid;
@@ -91,7 +97,7 @@ impl<'t, T> Image<&'t mut [T]> {
 	}
 }
 
-impl<'t, T> Iterator for Image<&'t [T]> { // Row iterator
+#[cfg(feature="slice_take")] impl<'t, T> Iterator for Image<&'t [T]> { // Row iterator
 	type Item = &'t [T];
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.size.y > 0 { Some(&self.take(1).data[..self.size.x as usize]) }
@@ -99,7 +105,7 @@ impl<'t, T> Iterator for Image<&'t [T]> { // Row iterator
 	}
 }
 
-impl<'t, T> Iterator for Image<&'t mut [T]> { // Row iterator
+#[cfg(feature="slice_take")] impl<'t, T> Iterator for Image<&'t mut [T]> { // Row iterator
 	type Item = &'t mut[T];
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.size.y > 0 { Some(&mut self.take_mut(1).data[..self.size.x as usize]) }
@@ -132,7 +138,7 @@ pub fn fill<T:Copy+Send>(target: &mut Image<&mut [T]>, value: T) { target.set(|_
 
 impl<T> Image<Box<[T]>> {
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
-	pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
+	#[cfg(feature="new_uninit")] pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 }
 use std::iter;
 impl<T:Copy> Image<Box<[T]>> {
@@ -164,23 +170,23 @@ impl From<bgr<u8>> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { ((r as u32) 
 pub type bgr8 = bgr<u8>;
 //pub type rgb8 = rgb<u8>;
 
-fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
-use std::{array, sync::LazyLock};
-pub static sRGB8_OETF12: LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB_OETF(i as f64 / 0xFFF as f64)).round() as u8));
+#[cfg(feature="lazy_lock")] fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+#[cfg(feature="lazy_lock")] use std::{array, sync::LazyLock};
+#[cfg(feature="lazy_lock")] pub static sRGB8_OETF12: LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB_OETF(i as f64 / 0xFFF as f64)).round() as u8));
 pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-pub fn sRGB8(v: f32) -> u8 { oetf8_12(&sRGB8_OETF12, v) } // FIXME: LazyLock::deref(sRGB_forward12) is too slow for image conversion
-impl From<bgrf> for bgr8 { fn from(bgr: bgrf) -> Self { bgr.map(|c| sRGB8(c)) } }
-impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr8::from(bgr).into() } }
-pub fn sRGB8_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { let oetf = &sRGB8_OETF12; Image::from_iter(linear.size, linear.data.iter().map(|&v| oetf8_12(oetf, v))) }
+#[cfg(feature="lazy_lock")] pub fn sRGB8(v: f32) -> u8 { oetf8_12(&sRGB8_OETF12, v) } // FIXME: LazyLock::deref(sRGB_forward12) is too slow for image conversion
+#[cfg(feature="lazy_lock")] impl From<bgrf> for bgr8 { fn from(bgr: bgrf) -> Self { bgr.map(|c| sRGB8(c)) } }
+#[cfg(feature="lazy_lock")] impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr8::from(bgr).into() } }
+#[cfg(feature="lazy_lock")] pub fn sRGB8_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { let oetf = &sRGB8_OETF12; Image::from_iter(linear.size, linear.data.iter().map(|&v| oetf8_12(oetf, v))) }
 
-pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
-pub fn eotf8(eotf: &[f32; 256], bgr: u32) -> bgrf { bgr::from(bgr).map(|c:u8| eotf[c as usize]) }
+#[cfg(feature="lazy_lock")] pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
+#[cfg(feature="lazy_lock")] pub fn eotf8(eotf: &[f32; 256], bgr: u32) -> bgrf { bgr::from(bgr).map(|c:u8| eotf[c as usize]) }
 //impl From<u32> for bgrf { fn from(bgr: u32) -> Self { eotf8(sRGB8_EOTF, bgr) } } // FIXME: LazyLock::deref(sRGB8_EOTF) is too slow for image conversion
 
 //pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
-pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
-pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: u32, b: bgrf) -> u32 { oetf8_12_rgb(oetf, t.lerp(eotf8(eotf, a), b)).into() }
-pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
+#[cfg(feature="lazy_lock")] pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
+#[cfg(feature="lazy_lock")] pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: u32, b: bgrf) -> u32 { oetf8_12_rgb(oetf, t.lerp(eotf8(eotf, a), b)).into() }
+#[cfg(feature="lazy_lock")] pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
 	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, target, color));
 }
