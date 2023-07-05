@@ -185,7 +185,7 @@ pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as us
 
 //use num::Lerp; pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
 #[cfg(feature="lazy_cell")] pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
-#[cfg(feature="lazy_cell")] pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: u32, b: bgrf) -> u32 { oetf8_12_rgb(oetf, t.lerp(eotf8(eotf, a), b)).into() }
+#[cfg(feature="lazy_cell")] pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: u32, b: bgrf) -> u32 { oetf8_12_rgb(oetf, num::Lerp::lerp(&t, eotf8(eotf, a), b)).into() }
 #[cfg(feature="lazy_cell")] pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
 	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, target, color));
