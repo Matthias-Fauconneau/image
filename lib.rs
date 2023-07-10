@@ -16,7 +16,8 @@ pub struct Image<D> {
 }
 
 impl<D> Image<D> {
-	pub fn index(&self, xy{x,y}: uint2) -> usize { assert!(x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
+	//#[track_caller] pub fn index(&self, xy{x,y}: uint2) -> usize { assert!(x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
+	#[track_caller] pub fn index(&self, xy{x,y}: uint2) -> Option<usize> { (x < self.size.x && y < self.size.y).then(|| (y * self.stride + x) as usize) }
 	pub fn rect(&self) -> Rect { self.size.into() }
 
 	#[track_caller] pub fn strided<T>(data: D, size : size, stride: u32) -> Self where D:AsRef<[T]> {
@@ -41,21 +42,22 @@ impl<D> DerefMut for Image<D> {
 
 impl<T, D:Deref<Target=[T]>> Index<usize> for Image<D> {
 	type Output=T;
-	fn index(&self, i:usize) -> &Self::Output { &self.data[i] }
+	fn index(&self, i: usize) -> &Self::Output { &self.data[i] }
 }
 impl<T, D:DerefMut<Target=[T]>> IndexMut<usize> for Image<D> {
-	fn index_mut(&mut self, i:usize) -> &mut Self::Output { &mut self.data[i] }
+	fn index_mut(&mut self, i: usize) -> &mut Self::Output { &mut self.data[i] }
 }
 
 impl<D> Index<uint2> for Image<D> where Self: Index<usize> {
 	type Output = <Self as Index<usize>>::Output;
-	fn index(&self, i:uint2) -> &Self::Output { &self[self.index(i)] }
+	fn index(&self, i: uint2) -> &Self::Output { &self[self.index(i).unwrap()] }
 }
 impl<D> IndexMut<uint2> for Image<D> where Self: IndexMut<usize> {
-	fn index_mut(&mut self, i:uint2) -> &mut Self::Output { let i = self.index(i); &mut self[i] }
+	fn index_mut(&mut self, i: uint2) -> &mut Self::Output { let i = self.index(i).unwrap(); &mut self[i] }
 }
 
 impl<T, D:Deref<Target=[T]>> Image<D> {
+	pub fn get(&self, i: uint2) -> Option<&T> { self.index(i).map(|i| &self[i]) }
 	pub fn rows(&self, rows: Range<u32>) -> Image<&[T]> {
 		assert!(rows.end <= self.size.y);
 		Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &self.data[(rows.start*self.stride) as usize..]}
@@ -67,6 +69,7 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 }
 
 impl<T, D:DerefMut<Target=[T]>> Image<D> {
+	pub fn get_mut(&mut self, i: uint2) -> Option<&mut T> { self.index(i).map(|i| &mut self[i]) }
 	pub fn rows_mut(&mut self, rows: Range<u32>) -> Image<&mut [T]> {
 		assert!(rows.end <= self.size.y);
 		Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &mut self.data[(rows.start*self.stride) as usize..]}
@@ -140,12 +143,15 @@ impl<T> Image<Box<[T]>> {
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
 	#[cfg(feature="new_uninit")] pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 }
-use std::iter;
+
 impl<T:Copy> Image<Box<[T]>> {
-	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, iter::from_fn(|| Some(value))) }
+	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
+}
+impl<T:Copy, D:Deref<Target=[T]>> Image<D> {
+	pub fn clone(&self) -> Image<Box<[T]>> { Image::from_iter(self.size, self.iter().copied()) }
 }
 impl<T:num::Zero> Image<Box<[T]>> {
-	pub fn zero(size: size) -> Self { Self::from_iter(size, iter::from_fn(|| Some(num::zero()))) }
+	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
 }
 
 impl<'t, T: bytemuck::Pod> Image<&'t [T]> {
