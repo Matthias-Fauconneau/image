@@ -172,7 +172,7 @@ impl bgr<f32> { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: se
 pub type bgrf = bgr<f32>;
 
 impl From<u32> for bgr<u8> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF} } }
-impl From<bgr<u8>> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
+impl From<bgr<u8>> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
 pub type bgr8 = bgr<u8>;
 //pub type rgb8 = rgb<u8>;
 
