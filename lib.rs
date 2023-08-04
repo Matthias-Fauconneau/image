@@ -21,7 +21,7 @@ impl<D> Image<D> {
 	pub fn rect(&self) -> Rect { self.size.into() }
 
 	#[track_caller] pub fn strided<T>(data: D, size : size, stride: u32) -> Self where D:AsRef<[T]> {
-		assert!((stride*size.y) as usize <= data.as_ref().len());
+		assert!((stride*size.y) as usize <= data.as_ref().len(), "{} {} {}", data.as_ref().len(), size, stride);
 		Self{data, size, stride}
 	}
 	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(data, size, size.x) }
@@ -64,7 +64,8 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 	}
 	#[track_caller] pub fn slice(&self, offset: uint2, size: size) -> Image<&[T]> {
 		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, "{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
-		Image{size, stride: self.stride, data: &self.data[(offset.y*self.stride+offset.x) as usize..]}
+		let start = offset.y*self.stride+offset.x;
+		Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
 	}
 }
 
