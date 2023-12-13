@@ -21,7 +21,7 @@ impl<D> Image<D> {
 	pub fn rect(&self) -> Rect { self.size.into() }
 
 	#[track_caller] pub fn strided<T>(data: D, size : size, stride: u32) -> Self where D:AsRef<[T]> {
-		assert!((stride*size.y) as usize <= data.as_ref().len(), "{} {} {}", data.as_ref().len(), size, stride);
+		assert!((stride*(size.y-1)+size.x) as usize <= data.as_ref().len(), "{} {} {}", data.as_ref().len(), size, stride);
 		Self{data, size, stride}
 	}
 	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(data, size, size.x) }
