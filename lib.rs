@@ -81,7 +81,7 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	}
 	#[cfg(feature="generic_arg_infer")] #[track_caller] pub fn slice_mut_clip(&mut self, sub: Rect) -> Option<Image<&mut[T]>> {
 		let sub = self.rect().clip(sub);
-		Some(self.slice_mut(sub.min.unsigned(), Some(sub.size()).filter(|s| s.x > 0 && s.y > 0)?))
+		Some(self.slice_mut(sub.min.unsigned(), Some(sub.size().unsigned()).filter(|s| s.x > 0 && s.y > 0)?))
 	}
 }
 
