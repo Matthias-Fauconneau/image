@@ -167,15 +167,16 @@ use std::fmt::{Debug, Formatter, Result};
 impl<D> Debug for Image<D> { fn fmt(&self, f: &mut Formatter) -> Result { assert!(self.stride == self.size.x); write!(f, "{:?}", self.size) } }
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
-//mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
+mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
 
 impl bgr<f32> { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 pub type bgrf = bgr<f32>;
+pub type rgbf = rgb<f32>;
 
 impl From<u32> for bgr<u8> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF} } }
 impl From<bgr<u8>> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
 pub type bgr8 = bgr<u8>;
-//pub type rgb8 = rgb<u8>;
+pub type rgb8 = rgb<u8>;
 
 #[cfg(feature="lazy_cell")] fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 #[cfg(feature="lazy_cell")] use std::{array, sync::LazyLock};
@@ -188,6 +189,7 @@ pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as us
 
 #[cfg(feature="lazy_cell")] pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
 #[cfg(feature="lazy_cell")] pub fn eotf8(eotf: &[f32; 256], bgr: bgr8) -> bgrf { bgr.map(|c:u8| eotf[c as usize]) }
+#[cfg(feature="lazy_cell")] pub fn eotf8_rgb(eotf: &[f32; 256], bgr: rgb8) -> rgbf { bgr.map(|c:u8| eotf[c as usize]) }
 //impl From<u32> for bgrf { fn from(bgr: u32) -> Self { eotf8(sRGB8_EOTF, bgr) } } // FIXME: LazyLock::deref(sRGB8_EOTF) is too slow for image conversion
 
 //use num::Lerp; pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
