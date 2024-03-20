@@ -187,15 +187,15 @@ pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as us
 #[cfg(feature="lazy_cell")] pub fn sRGB8_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { let oetf = &sRGB8_OETF12; Image::from_iter(linear.size, linear.data.iter().map(|&v| oetf8_12(oetf, v))) }
 
 #[cfg(feature="lazy_cell")] pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
-#[cfg(feature="lazy_cell")] pub fn eotf8(eotf: &[f32; 256], bgr: u32) -> bgrf { bgr::from(bgr).map(|c:u8| eotf[c as usize]) }
+#[cfg(feature="lazy_cell")] pub fn eotf8(eotf: &[f32; 256], bgr: bgr8) -> bgrf { bgr.map(|c:u8| eotf[c as usize]) }
 //impl From<u32> for bgrf { fn from(bgr: u32) -> Self { eotf8(sRGB8_EOTF, bgr) } } // FIXME: LazyLock::deref(sRGB8_EOTF) is too slow for image conversion
 
 //use num::Lerp; pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
 #[cfg(feature="lazy_cell")] pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
-#[cfg(feature="lazy_cell")] pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: u32, b: bgrf) -> u32 { oetf8_12_rgb(oetf, num::Lerp::lerp(&t, eotf8(eotf, a), b)).into() }
+#[cfg(feature="lazy_cell")] pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_rgb(oetf, num::Lerp::lerp(&t, eotf8(eotf, a), b)).into() }
 #[cfg(feature="lazy_cell")] pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
-	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, target, color));
+	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, bgr8::from(target), color));
 }
 
 /*impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 20) as u16 & 0x3FF} } }

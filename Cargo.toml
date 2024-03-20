@@ -10,6 +10,6 @@ generic_arg_infer=['vector/generic_arg_infer']
 unstable=['lazy_cell','type_alias_impl_trait','slice_take','new_uninit','const_trait_impl','generic_arg_infer']
 
 [dependencies]
-num={git='https://github.com/Matthias-Fauconneau/num',tag='0'}
-vector={git='https://github.com/Matthias-Fauconneau/vector',tag='0'}
+num={git='https://github.com/Matthias-Fauconneau/num'}
+vector={git='https://github.com/Matthias-Fauconneau/vector'}
 bytemuck='*'
