@@ -168,15 +168,22 @@ impl<D> Debug for Image<D> { fn fmt(&self, f: &mut Formatter) -> Result { assert
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
 mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
+mod vector_bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); } pub use vector_bgra::bgra;
+mod vector_rgba { vector::vector!(4 rgba T T T T, r g b a, Red Blue Green Alpha); } pub use vector_rgba::rgba;
+impl<T> From<bgra<T>> for rgba<T> { fn from(bgra{b,g,r,a}: bgra<T>) -> Self { rgba{r,g,b,a} } }
 
 impl bgr<f32> { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 pub type bgrf = bgr<f32>;
 pub type rgbf = rgb<f32>;
 
 impl From<u32> for bgr<u8> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF} } }
+impl From<u32> for bgra<u8> { fn from(bgr: u32) -> Self { bgra{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF, a: (bgr >> 24) as u8 & 0xFF} } }
 impl From<bgr<u8>> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
+
 pub type bgr8 = bgr<u8>;
 pub type rgb8 = rgb<u8>;
+pub type bgra8 = bgra<u8>;
+pub type rgba8 = rgba<u8>;
 
 #[cfg(feature="lazy_cell")] fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 #[cfg(feature="lazy_cell")] use std::{array, sync::LazyLock};
