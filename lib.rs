@@ -65,7 +65,8 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 	#[track_caller] pub fn slice(&self, offset: uint2, size: size) -> Image<&[T]> {
 		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, "{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		let start = offset.y*self.stride+offset.x;
-		Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
+		//Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
+		Image{size, stride: self.stride, data: &self.data[start as usize..(start+size.y*self.stride) as usize]}
 	}
 }
 
@@ -86,7 +87,7 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 }
 
 #[cfg(feature="slice_take")] impl<'t, T> Image<&'t [T]> {
-	pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
+	#[track_caller] pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
 		assert!(mid <= self.size.y);
 		self.size.y -= mid;
 		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take(..(mid*self.stride) as usize).unwrap()}
@@ -248,3 +249,27 @@ pub const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| array::from_fn(
 }));
 pub fn sRGB8_to_PQ10(eetf: &[u16; 256], rgb{r,g,b}: rgb8) -> u32 { bgr{b: eetf[b as usize], g: eetf[g as usize], r: eetf[r as usize]}.into() }
 //impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: LazyLock::deref(sRGB_to_PQ10) is too slow for image conversion*/
+
+#[cfg(feature="io")]
+pub fn u8(path: impl AsRef<std::path::Path>) -> Image<Box<[u8]>> {
+	let image = image::open(path).unwrap().into_luma8();
+	assert_eq!(image.sample_layout(), image::flat::SampleLayout{
+		channels: 1, channel_stride: 1, width: image.width(), width_stride: 1, height: image.height(), height_stride: image.width() as _});
+	Image::new(xy{x: image.width(), y: image.height()}, image.into_raw().into_boxed_slice())
+}
+
+#[cfg(feature="io")]
+pub fn rgb8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgb8]>> {
+	let image = image::open(path).unwrap().into_rgb8();
+	assert_eq!(image.sample_layout(), image::flat::SampleLayout{
+		channels: 3, channel_stride: 1, width: image.width(), width_stride: 3, height: image.height(), height_stride: 3*image.width() as usize});
+	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
+}
+
+#[cfg(feature="io")]
+pub fn rgba8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgba8]>> {
+	let image = image::open(path).unwrap().into_rgba8();
+	assert_eq!(image.sample_layout(), image::flat::SampleLayout{
+		channels: 4, channel_stride: 1, width: image.width(), width_stride: 4, height: image.height(), height_stride: 4*image.width() as usize});
+	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
+}
