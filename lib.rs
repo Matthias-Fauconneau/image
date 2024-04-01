@@ -31,14 +31,14 @@ impl<D> Image<D> {
 }
 
 use std::ops::{Deref, DerefMut, Index, IndexMut, Range};
-impl<D> Deref for Image<D> {
+/*impl<D> Deref for Image<D> {
 	type Target = D;
 	fn deref(&self) -> &Self::Target { &self.data }
 }
 
 impl<D> DerefMut for Image<D> {
 	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.data }
-}
+}*/
 
 impl<T, D:Deref<Target=[T]>> Index<usize> for Image<D> {
 	type Output=T;
@@ -149,8 +149,8 @@ impl<T> Image<Box<[T]>> {
 impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
-impl<T:Copy, D:Deref<Target=[T]>> Image<D> {
-	pub fn clone(&self) -> Image<Box<[T]>> { Image::from_iter(self.size, self.iter().copied()) }
+impl<D> Image<D> {
+	pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Copy, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().copied()) }
 }
 impl<T:num::Zero> Image<Box<[T]>> {
 	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
@@ -171,6 +171,7 @@ mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use 
 mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
 mod vector_bgra { vector::vector!(4 bgra T T T T, b g r a, Blue Green Red Alpha); } pub use vector_bgra::bgra;
 mod vector_rgba { vector::vector!(4 rgba T T T T, r g b a, Red Blue Green Alpha); } pub use vector_rgba::rgba;
+impl<T> rgba<T> { pub fn rgb(self) -> rgb<T> { let rgba{r,g,b,a:_} = self; rgb{r,g,b} } }
 impl<T> From<bgra<T>> for rgba<T> { fn from(bgra{b,g,r,a}: bgra<T>) -> Self { rgba{r,g,b,a} } }
 
 impl bgr<f32> { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
