@@ -177,6 +177,7 @@ impl<T> From<bgra<T>> for rgba<T> { fn from(bgra{b,g,r,a}: bgra<T>) -> Self { rg
 impl bgr<f32> { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
 pub type bgrf = bgr<f32>;
 pub type rgbf = rgb<f32>;
+pub type rgbaf = rgba<f32>;
 
 impl From<u32> for bgr<u8> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF} } }
 impl From<u32> for bgra<u8> { fn from(bgr: u32) -> Self { bgra{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF, a: (bgr >> 24) as u8 & 0xFF} } }
