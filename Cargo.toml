@@ -12,5 +12,5 @@ io = ['image']
 num={git='https://github.com/Matthias-Fauconneau/num'}
 vector={git='https://github.com/Matthias-Fauconneau/vector'}
 bytemuck='*'
-image={version='*', default-features=false, features=['png','jpg'], optional=true}
+image={version='*', default-features=false, features=['png','jpeg'], optional=true}
 png={version='*', optional=true}
