@@ -273,14 +273,14 @@ pub fn rgba8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgba8]>> {
 
 #[cfg(feature="png")]
 pub fn u16(path: impl AsRef<std::path::Path>) -> Image<Box<[u16]>> {
-	let file = std::fs::File::open(path)?;
-	let mut decoder = png::Decoder::new(img_file);
-	let mut reader = decoder.read_info()?;
+	let file = std::fs::File::open(path).unwrap();
+	let decoder = png::Decoder::new(file);
+	let mut reader = decoder.read_info().unwrap();
 	let mut buffer = vec![0; reader.output_buffer_size()];
-	reader.next_frame(&mut buffer)?;
+	reader.next_frame(&mut buffer).unwrap();
 	let mut buffer_u16 = vec![0; (reader.info().width * reader.info().height) as usize];
 	let mut buffer_cursor = std::io::Cursor::new(buffer);
 	use byteorder::ReadBytesExt;
-	buffer_cursor.read_u16_into::<byteorder::BigEndian>(&mut buffer_u16)?;
+	buffer_cursor.read_u16_into::<byteorder::BigEndian>(&mut buffer_u16).unwrap();
 	Image::new(xy{x: reader.info().width, y: reader.info().height}, buffer_u16.into_boxed_slice())
 }
