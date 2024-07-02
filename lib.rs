@@ -270,3 +270,17 @@ pub fn rgba8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgba8]>> {
 	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 4, channel_stride: 1, width: image.width(), width_stride: 4, height: image.height(), height_stride: 4*image.width() as usize});
 	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
 }
+
+#[cfg(feature="png")]
+pub fn u16(path: impl AsRef<std::path::Path>) -> Image<Box<[u16]>> {
+	let file = std::fs::File::open(path)?;
+	let mut decoder = png::Decoder::new(img_file);
+	let mut reader = decoder.read_info()?;
+	let mut buffer = vec![0; reader.output_buffer_size()];
+	reader.next_frame(&mut buffer)?;
+	let mut buffer_u16 = vec![0; (reader.info().width * reader.info().height) as usize];
+	let mut buffer_cursor = std::io::Cursor::new(buffer);
+	use byteorder::ReadBytesExt;
+	buffer_cursor.read_u16_into::<byteorder::BigEndian>(&mut buffer_u16)?;
+	Image::new(xy{x: reader.info().width, y: reader.info().height}, buffer_u16.into_boxed_slice())
+}
