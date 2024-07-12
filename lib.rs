@@ -148,7 +148,7 @@ impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
 impl<D> Image<D> {
-	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Copy, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().copied()) }
+	pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Copy, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().data.iter().copied()) }
 }
 impl<T:num::Zero> Image<Box<[T]>> {
 	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
