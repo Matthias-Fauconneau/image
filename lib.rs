@@ -150,7 +150,8 @@ impl<T:Copy> Image<Box<[T]>> {
 impl<D> Image<D> {
 	pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Copy, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().data.iter().copied()) }
 }
-impl<T:num::Zero> Image<Box<[T]>> {
+pub use num::Zero;
+impl<T:Zero> Image<Box<[T]>> {
 	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
 }
 
