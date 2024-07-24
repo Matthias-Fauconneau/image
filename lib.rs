@@ -141,6 +141,7 @@ pub fn fill<T:Copy+Send>(target: &mut Image<&mut [T]>, value: T) { target.set(|_
 
 impl<T> Image<Box<[T]>> {
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
+	pub fn from_xy<F:Fn(uint2)->T>(size : size, ref f: F) -> Self { Self::from_iter(size, (0..size.y).map(|y| (0..size.x).map(move |x| f(xy{x,y}))).flatten()) }
 	#[cfg(feature="new_uninit")] pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 }
 
