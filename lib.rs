@@ -126,7 +126,7 @@ pub fn segment(total_length: u32, segment_count: u32) -> impl Iterator<Item=Rang
 impl<T> Image<&mut [T]> {
 	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
 	pub fn set_map<F:Fn(uint2,&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y},&self[xy{x,y}]); } } }
-	pub fn map<F:Fn(&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
+	//pub fn map<F:Fn(&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
 	pub fn zip_map<U, D:Deref<Target=[U]>, F: Fn(&T,&U)->T+Copy>(&mut self, source: &Image<D>, f: F) {
 		assert!(self.size == source.size);
 		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}], &source[xy{x,y}]); } }
@@ -142,7 +142,6 @@ pub fn fill<T:Copy+Send>(target: &mut Image<&mut [T]>, value: T) { target.set(|_
 impl<T> Image<Box<[T]>> {
 	pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
 	pub fn from_xy<F:Fn(uint2)->T>(size : size, ref f: F) -> Self { Self::from_iter(size, (0..size.y).map(|y| (0..size.x).map(move |x| f(xy{x,y}))).flatten()) }
-	pub fn map<F:Fn(uint2,&T)->T+Copy>(&self, f:F) -> Self { Self::from_xy(self.size, |p| f(p,&self[p])) }
 	#[cfg(feature="new_uninit")] pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 }
 
@@ -150,8 +149,9 @@ impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
 impl<D> Image<D> {
-	//pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Copy, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().data.iter().copied()) }
-	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Copy, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().copied()) }
+	//pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Clone, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().data.iter().cloned()) }
+	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where D: AsRef<[T]>, T:Clone { Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().cloned()) }
+	pub fn map<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T+Copy>(&self, f:F) -> Image<Box<[T]>> where Self: Index<uint2> { Image::from_xy(self.size, |p| f(p,&self[p])) }
 }
 pub use num::Zero;
 impl<T:Zero> Image<Box<[T]>> {
