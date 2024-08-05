@@ -29,14 +29,6 @@ impl<D> Image<D> {
 }
 
 use std::ops::{Deref, DerefMut, Index, IndexMut, Range};
-/*impl<D> Deref for Image<D> {
-	type Target = D;
-	fn deref(&self) -> &Self::Target { &self.data }
-}
-
-impl<D> DerefMut for Image<D> {
-	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.data }
-}*/
 
 impl<T, D:Deref<Target=[T]>> Index<usize> for Image<D> {
 	type Output=T;
@@ -63,8 +55,8 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 	#[track_caller] pub fn slice(&self, offset: uint2, size: size) -> Image<&[T]> {
 		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, "{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		let start = offset.y*self.stride+offset.x;
-		//Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
-		Image{size, stride: self.stride, data: &self.data[start as usize..(start+size.y*self.stride) as usize]}
+		Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
+		//Image{size, stride: self.stride, data: &self.data[start as usize..(start+size.y*self.stride) as usize]}
 	}
 }
 
@@ -88,7 +80,7 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	#[track_caller] pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
 		assert!(mid <= self.size.y);
 		self.size.y -= mid;
-		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take(..(mid*self.stride) as usize).unwrap()}
+		Image{size: xy{x: self.size.x, y: mid}, stride: self.stride, data: self.data.take(..((mid-1)*self.stride + if self.size.y == 0 { self.size.x } else { self.stride }) as usize).unwrap()}
 	}
 }
 
@@ -102,7 +94,7 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 
 #[cfg(feature="slice_take")] impl<'t, T> Iterator for Image<&'t [T]> { // Row iterator
 	type Item = &'t [T];
-	fn next(&mut self) -> Option<Self::Item> {
+	#[track_caller] fn next(&mut self) -> Option<Self::Item> {
 		if self.size.y > 0 { Some(&self.take(1).data[..self.size.x as usize]) }
 		else { None }
 	}
