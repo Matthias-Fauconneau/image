@@ -7,12 +7,10 @@ new_uninit=[]
 const_trait_impl=[]
 unstable=['type_alias_impl_trait','slice_take','new_uninit','const_trait_impl']
 io = ['image']
-png = ['dep:png','byteorder']
 
 [dependencies]
 num={git='https://github.com/Matthias-Fauconneau/num'}
 vector={git='https://github.com/Matthias-Fauconneau/vector'}
 bytemuck='*'
 image={version='*', default-features=false, features=['png','jpeg'], optional=true}
-png={version='*', optional=true}
-byteorder={version='*', optional=true}
+exr={version='*', optional=true}

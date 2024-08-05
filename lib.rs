@@ -14,7 +14,6 @@ pub struct Image<D> {
 }
 
 impl<D> Image<D> {
-	//#[track_caller] pub fn index(&self, xy{x,y}: uint2) -> usize { assert!(x < self.size.x && y < self.size.y); (y * self.stride + x) as usize }
 	#[track_caller] pub fn index(&self, xy{x,y}: uint2) -> Option<usize> { (x < self.size.x && y < self.size.y).then(|| (y * self.stride + x) as usize) }
 	pub fn rect(&self) -> Rect { self.size.into() }
 
@@ -56,7 +55,6 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, "{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		let start = offset.y*self.stride+offset.x;
 		Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
-		//Image{size, stride: self.stride, data: &self.data[start as usize..(start+size.y*self.stride) as usize]}
 	}
 }
 
@@ -108,24 +106,11 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	}
 }
 
-pub fn segment(total_length: u32, segment_count: u32) -> impl Iterator<Item=Range<u32>> {
-	(0..segment_count)
-	.map(move |i| (i+1)*total_length/segment_count)
-	.scan(0, |start, end| { let next = (*start, end); *start = end; Some(next) })
-	.map(|(start, end)| start..end)
-}
-
 impl<T> Image<&mut [T]> {
 	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
-	pub fn set_map<F:Fn(uint2,&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y},&self[xy{x,y}]); } } }
-	//pub fn map<F:Fn(&T)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}]); } } }
 	pub fn zip_map<U, D:Deref<Target=[U]>, F: Fn(&T,&U)->T+Copy>(&mut self, source: &Image<D>, f: F) {
 		assert!(self.size == source.size);
 		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}], &source[xy{x,y}]); } }
-	}
-	pub fn each_mut_zip_map<U, D:Deref<Target=[U]>, F: Fn(&mut T,&U)>(&mut self, source: &Image<D>, f: F) {
-		assert!(self.size == source.size);
-		for y in 0..self.size.y { for x in 0..self.size.x { f(&mut self[xy{x,y}], &source[xy{x,y}]); } }
 	}
 }
 
@@ -140,11 +125,19 @@ impl<T> Image<Box<[T]>> {
 impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
+
 impl<D> Image<D> {
-	//pub fn clone<T>(&self) -> Image<Box<[T]>> where T:Clone, D:AsRef<[T]> { Image::from_iter(self.size, self.as_ref().data.iter().cloned()) }
-	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where D: AsRef<[T]>, T:Clone { Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().cloned()) }
-	pub fn map<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T+Copy>(&self, f:F) -> Image<Box<[T]>> where Self: Index<uint2> { Image::from_xy(self.size, |p| f(p,&self[p])) }
+	pub fn map<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T>(&self, f: F) -> Image<Box<[T]>> where Self: Index<uint2> {
+		Image::from_xy(self.size, |p| f(p,&self[p]))
+	}
 }
+
+impl<D> Image<D> {
+	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where D: AsRef<[T]>, T:Clone {
+		Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().cloned())
+	}
+}
+
 pub use num::Zero;
 impl<T:Zero> Image<Box<[T]>> {
 	pub fn zero(size: size) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(num::zero()))) }
@@ -158,8 +151,8 @@ impl<'t, T: bytemuck::Pod> Image<&'t mut [T]> {
 	#[track_caller] pub fn cast_slice_mut<U:bytemuck::Pod>(slice: &'t mut [U], size: size, stride: u32) -> Self { Self::strided(bytemuck::cast_slice_mut(slice), size, stride) }
 }
 
-use std::fmt::{Debug, Formatter, Result};
-impl<D> Debug for Image<D> { fn fmt(&self, f: &mut Formatter) -> Result { assert!(self.stride == self.size.x); write!(f, "{:?}", self.size) } }
+use std::fmt::{self, Debug, Formatter};
+impl<D> Debug for Image<D> { fn fmt(&self, f: &mut Formatter) -> fmt::Result { assert!(self.stride == self.size.x); write!(f, "{:?}", self.size) } }
 
 mod vector_bgr { vector::vector!(3 bgr T T T, b g r, Blue Green Red); } pub use vector_bgr::bgr;
 mod vector_rgb { vector::vector!(3 rgb T T T, r g b, Red Green Blue); } pub use vector_rgb::rgb;
@@ -173,14 +166,16 @@ pub type bgrf = bgr<f32>;
 pub type rgbf = rgb<f32>;
 pub type rgbaf = rgba<f32>;
 
-impl From<u32> for bgr<u8> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF} } }
-impl From<u32> for bgra<u8> { fn from(bgr: u32) -> Self { bgra{b: (bgr >> 00) as u8 & 0xFF, g: (bgr >> 8) as u8 & 0xFF, r: (bgr >> 16) as u8 & 0xFF, a: (bgr >> 24) as u8 & 0xFF} } }
-impl From<bgr<u8>> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
-
 pub type bgr8 = bgr<u8>;
 pub type rgb8 = rgb<u8>;
 pub type bgra8 = bgra<u8>;
 pub type rgba8 = rgba<u8>;
+
+impl From<u32> for bgr8 { fn from(bgr: u32) -> Self { bgr{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF} } }
+impl From<u32> for bgra8 { fn from(bgr: u32) -> Self { bgra{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF, a: (bgr>>24) as u8 & 0xFF} } }
+impl From<bgr8> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
+
+pub fn lerp_rgb8(t: f32, a: rgb8, b: rgb8) -> rgb8 { let t8:u16=(t*(0x100 as f32)) as u16; rgb::<u8>::from(((0x100-t8)*rgb::<u16>::from(a) + t8*rgb::<u16>::from(b))/0x100) }
 
 fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 use std::{array, sync::LazyLock};
@@ -199,53 +194,145 @@ pub fn eotf8_rgb(eotf: &[f32; 256], bgr: rgb8) -> rgbf { bgr.map(|c:u8| eotf[c a
 
 //use num::Lerp; pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
 pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
-pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_rgb(oetf, num::Lerp::lerp(&t, eotf8(eotf, a), b)).into() }
+pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_rgb(oetf, num::lerp(t, eotf8(eotf, a), b)).into() }
 pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
 	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, bgr8::from(target), color));
 }
 
-/*impl From<u32> for bgr<u16> { fn from(bgr: u32) -> Self { bgr{b: (bgr >> 00) as u16 & 0x3FF, g: (bgr >> 10) as u16 & 0x3FF, r: (bgr >> 20) as u16 & 0x3FF} } }
-impl From<bgr<u16>> for u32 { fn from(bgr{b,g,r}: bgr<u16>) -> Self { assert!(r<0x400 && g<0x400 && b<0x400,"{r} {g} {b}"); ((r as u32) << 20) | ((g as u32) << 10) | (b as u32) } }
+// /!\ keeps floats in the initial 8bit space (sRGB), i.e incorrect for interpolations
+pub fn from_u8(image@Image{size,..}: Image<&[u8]>) -> Image<Box<[f32]>> { Image::from_iter(size, image.data.into_iter().map(|&v| f32::from(v))) }
+pub fn from_rgb8(image@Image{size,..}: Image<&[rgb8]>) -> Image<Box<[rgb<f32>]>> { Image::from_iter(size, image.data.into_iter().map(|&v| rgb::<f32>::from(v))) }
+pub fn from_rgbaf(image@Image{size,..}: Image<&[rgba<f32>]>) -> Image<Box<[rgba8]>> { Image::from_iter(size, image.data.into_iter().map(|&v| rgba::<u8>::from(v))) }
+pub fn from_rgbf(image@Image{size,..}: Image<&[rgb<f32>]>) -> Image<Box<[rgb8]>> { Image::from_iter(size, image.data.into_iter().map(|&v| rgb::<u8>::from(v))) }
 
-pub fn invert(image: &mut Image<&mut [u32]>, m: bgr<bool>) { image.map(|&bgr| { m.zip(bgr::<u16>::from(bgr)).map(|(m,c)| if m {0x3FF-c} else {c}).into()}) }
-
-// PQ
-const m1 : f64 = 2610./16384.;
-const m2 : f64 = 128.*2523./4096.;
-const c2 : f64 = 32.*2413./4096.;
-const c3 : f64 = 32.*2392./4096.;
-const c1 : f64 = c3-c2+1.;
-
-pub fn PQ_EOTF(pq: f64) -> f64 { (f64::max(0., pq.powf(1./m2)-c1) / (c2 - c3*pq.powf(1./m2))).powf(1./m1) } // /10Kcd
-use std::{array, sync::LazyLock};
-pub static PQ10_EOTF : LazyLock<[f32; 0x400]> = LazyLock::new(|| std::array::from_fn(|pq|PQ_EOTF(pq as f64 / 0x3FF as f64) as f32));
-pub fn PQ10(x: f32) -> u16 {
-	let (mut left, mut right) = (0, PQ10_EOTF.len()); while left < right { let mid = left + (right - left) / 2; if PQ10_EOTF[mid] < x { left = mid + 1; } else { right = mid; } }
-	left as u16
-}
-impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { bgr.map(|c| PQ10(c)).into() } }
-pub fn PQ10_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u16]>> { Image::from_iter(linear.size, linear.data.iter().map(|&v| PQ10(v))) }
-
-pub fn from_PQ10(pq: u16) -> f32 { PQ10_EOTF[pq as usize] } // FIXME: LazyLock::deref(PQ10_EOTF) is too slow for image conversion
-impl From<u32> for bgrf { fn from(bgr: u32) -> Self { bgr::from(bgr).map(|c| from_PQ10(c)) } }
-
-pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*PQ10*/from(t.lerp(bgrf::/*PQ10⁻¹*/from(a), b)) }
-pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) { target.zip_map(mask, |&target, &t| lerp(t, target, color)); }
-
-pub fn PQ_OETF(y: f64) -> f64 { ((c1+c2*y.powf(m1))/(1.+c3*y.powf(m1))).powf(m2) }
-pub fn PQ10_OETF(v: f64) -> u16 {
-	assert!(v >= 0. && v <= 1.);
-	let PQ = PQ_OETF(v);
-	assert!(PQ <= 1.);
-	(1023.*PQ).round() as u16
+pub fn downsample<T: Copy, D: std::ops::Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[F::Output]>>
+	where F: From<T>+std::iter::Sum<F>+std::ops::Div<f32> {
+	Image::from_xy(source.size/FACTOR, |xy{x,y}|
+			(0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| F::from(source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])))
+				.flatten().sum::<F>() / (FACTOR as f32*FACTOR as f32)
+	)
 }
 
-pub const sRGB_to_PQ10 : LazyLock<[u16; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.;
-    PQ10_OETF(if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 })
-}));
-pub fn sRGB8_to_PQ10(eetf: &[u16; 256], rgb{r,g,b}: rgb8) -> u32 { bgr{b: eetf[b as usize], g: eetf[g as usize], r: eetf[r as usize]}.into() }
-//impl From<rgb8> for u32 { fn from(rgb: rgb8) -> Self { rgb8_to_PQ10(sRGB_to_PQ10, rgb) } } // FIXME: LazyLock::deref(sRGB_to_PQ10) is too slow for image conversion*/
+pub fn downsample_rgba<const FACTOR: u32>(ref source: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
+	Image::from_xy(source.size/FACTOR, |xy{x,y}| {
+		let rgba{r,g,b,a} = (0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| { let rgba{r,g,b, a} = source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}]; rgba{r: r*a, g: g*a, b: b*a, a} })).flatten().sum::<rgba<f32>>();
+		if a == 0. { return rgba{r: 0., g: 0., b: 0., a} }
+		rgba{r: r / a, g: g / a, b: b /a, a: a / (FACTOR*FACTOR) as f32}
+	})
+}
+
+pub fn bilinear(target_size: size, ref image@Image{size,..}: Image<&[f32]>) -> Image<Box<[f32]>> {
+	let scale = xy::<f32>::from(size)/xy::<f32>::from(target_size);
+	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| {
+		let s = scale*xy{x: x as f32,y: y as f32};
+		let i = uint2::from(s);
+		let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| image[xy{x: ((i.x as i32+d.x) as u32+size.x)%size.x, y: ((i.y as i32+d.y).max(0) as u32).min(size.y-1)}]);
+		let f = s-s.map(f32::floor);
+		use num::lerp;
+		lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
+	})).flatten())
+}
+
+#[cfg(feature="io")]
+pub fn bilinear_rgb8(target_size: size, image@Image{size,..}: Image<&[rgb8]>) -> Image<Box<[rgb8]>> {
+	let ref image = image::imageops::resize(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Rgb(image[xy{x,y}].into())), target_size.x, target_size.y, image::imageops::FilterType::Triangle);
+	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0.into())).flatten())
+}
+
+#[cfg(feature="new_uninit")]
+pub fn transpose_box_convolve<const R: u32>(source: Image<&[f32]>) -> Image<Box<[f32]>> {
+	let mut transpose = Image::uninitialized(source.size.yx());
+	for y in 0..source.size.y {
+		let r : f64 = R as f64;
+		let mut sum : f64 = source[xy{x: 0, y}] as f64*r;
+		for x in 0..R { sum += source[xy{x, y}] as f64; }
+		for x in 0..R {
+			sum += source[xy{x: x+R, y}] as f64;
+			transpose[xy{x: y, y: x}] = (sum/(r+1.+r)) as f32;
+			sum -= source[xy{x: 0, y}] as f64;
+		}
+		for x in R..source.size.x-R {
+			sum += source[xy{x: x+R, y}] as f64;
+			transpose[xy{x: y, y: x}] = (sum/(r+1.+r)) as f32;
+			sum -= source[xy{x: (x as i32-R as i32) as u32, y}] as f64;
+		}
+		for x in source.size.x-R..source.size.x {
+				sum += source[xy{x: source.size.x-1, y}] as f64;
+				transpose[xy{x: y, y: x}] = (sum/(r+1.+r)) as f32;
+				sum -= source[xy{x: (x as i32-R as i32) as u32, y}] as f64;
+		}
+	}
+	transpose
+}
+#[cfg(feature="new_uninit")]
+pub fn blur<const R: u32>(image: Image<&[f32]>) -> Image<Box<[f32]>> {
+	transpose_box_convolve::<R>(transpose_box_convolve::<R>(image.as_ref()).as_ref())
+}
+
+#[cfg(feature="new_uninit")]
+pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> Image<Box<[rgb<f32>]>> {
+	let mut transpose = Image::uninitialized(source.size.yx());
+	for y in 0..source.size.y {
+		let r : f64 = R as f64;
+		let mut sum = r*rgb::<f64>::from(source[xy{x: 0, y}]);
+		for x in 0..R { sum += rgb::<f64>::from(source[xy{x, y}]); }
+		for x in 0..R {
+			sum += rgb::<f64>::from(source[xy{x: x+R, y}]);
+			transpose[xy{x: y, y: x}] = rgb::<f32>::from(sum/(r+1.+r));
+			sum -= rgb::<f64>::from(source[xy{x: 0, y}]);
+		}
+		for x in R..source.size.x-R {
+			sum += rgb::<f64>::from(source[xy{x: x+R, y}]);
+			transpose[xy{x: y, y: x}] = rgb::<f32>::from(sum/(r+1.+r));
+			sum -= rgb::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
+		}
+		for x in source.size.x-R..source.size.x {
+				sum += rgb::<f64>::from(source[xy{x: source.size.x-1, y}]);
+				transpose[xy{x: y, y: x}] = rgb::<f32>::from(sum/(r+1.+r));
+				sum -= rgb::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
+		}
+	}
+	transpose
+}
+#[cfg(feature="new_uninit")]
+pub fn blur_rgb<const R: u32>(image: Image<&[rgb<f32>]>) -> Image<Box<[rgb<f32>]>> {
+	transpose_box_convolve_rgb::<R>(transpose_box_convolve_rgb::<R>(image.as_ref()).as_ref())
+}
+#[cfg(feature="new_uninit")]
+pub fn blur_rgb8<const R: u32>(image: Image<&[rgb8]>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
+	from_rgbf(blur_rgb::<R>(from_rgb8(image).as_ref()).as_ref())
+}
+
+#[cfg(feature="new_uninit")]
+pub fn transpose_box_convolve_rgba<const R: u32>(source: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
+	let mut transpose = Image::uninitialized(source.size.yx());
+	for y in 0..source.size.y {
+		let r : f64 = R as f64;
+		let mut sum = r*rgba::<f64>::from(source[xy{x: 0, y}]);
+		for x in 0..R { sum += rgba::<f64>::from(source[xy{x, y}]); }
+		for x in 0..R {
+			sum += rgba::<f64>::from(source[xy{x: x+R, y}]);
+			transpose[xy{x: y, y: x}] = rgba::<f32>::from(sum/(r+1.+r));
+			sum -= rgba::<f64>::from(source[xy{x: 0, y}]);
+		}
+		for x in R..source.size.x-R {
+			sum += rgba::<f64>::from(source[xy{x: x+R, y}]);
+			transpose[xy{x: y, y: x}] = rgba::<f32>::from(sum/(r+1.+r));
+			sum -= rgba::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
+		}
+		for x in source.size.x-R..source.size.x {
+				sum += rgba::<f64>::from(source[xy{x: source.size.x-1, y}]);
+				transpose[xy{x: y, y: x}] = rgba::<f32>::from(sum/(r+1.+r));
+				sum -= rgba::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
+		}
+	}
+	transpose
+}
+#[cfg(feature="new_uninit")]
+pub fn blur_rgba<const R: u32>(image: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
+	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(Image::map(&image, |_,&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|_,&rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
+}
 
 #[cfg(feature="io")]
 pub fn u8(path: impl AsRef<std::path::Path>) -> Image<Box<[u8]>> {
@@ -268,16 +355,46 @@ pub fn rgba8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgba8]>> {
 	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
 }
 
-#[cfg(feature="png")]
-pub fn u16(path: impl AsRef<std::path::Path>) -> Image<Box<[u16]>> {
-	let file = std::fs::File::open(path).unwrap();
-	let decoder = png::Decoder::new(file);
-	let mut reader = decoder.read_info().unwrap();
-	let mut buffer = vec![0; reader.output_buffer_size()];
-	reader.next_frame(&mut buffer).unwrap();
-	let mut buffer_u16 = vec![0; (reader.info().width * reader.info().height) as usize];
-	let mut buffer_cursor = std::io::Cursor::new(buffer);
-	use byteorder::ReadBytesExt;
-	buffer_cursor.read_u16_into::<byteorder::BigEndian>(&mut buffer_u16).unwrap();
-	Image::new(xy{x: reader.info().width, y: reader.info().height}, buffer_u16.into_boxed_slice())
+#[cfg(feature="io")] pub type Result<T=(),E=image::ImageError> = std::result::Result<T, E>;
+#[cfg(feature="io")]
+pub fn save_u8<D: std::ops::Deref<Target=[u8]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+	image::save_buffer(path, &data, size.x, size.y, image::ColorType::L8)
 }
+#[cfg(feature="io")]
+pub fn save_alpha<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+	image::save_buffer(path, &Box::from_iter(data.iter().map(|a| (a*(0xFF as f32)) as u8)), size.x, size.y, image::ColorType::L8)
+}
+#[cfg(feature="io")]
+pub fn save_rgb<D: std::ops::Deref<Target=[rgb8]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgb8)
+}
+#[cfg(feature="io")]
+pub fn save_rgba<D: std::ops::Deref<Target=[rgba8]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgba8)
+}
+
+#[cfg(feature="exr")]
+pub fn f32(path: impl AsRef<std::path::Path>) -> Image<Box<[f32]>> {
+	let exr = exr::prelude::read_first_flat_layer_from_file(path).unwrap().layer_data;
+	let size = {let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}};
+	Image::from_xy(size, |xy{x,y}| { let &[exr::prelude::Sample::F32(v)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() else {unreachable!()}; v })
+}
+
+#[cfg(feature="exr")]
+pub fn exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
+	use exr::prelude::*;
+	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel(channel).with_pixel_fn(|Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)))
+			.write().to_file(path)
+}
+vector::vector!(2 za T T, z a, Depth Opacity);
+#[cfg(feature="exr")] pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
+	use exr::prelude::*;
+	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel("depth").with_channel("opacity").with_pixel_fn(|Vec2(x,y)| {
+		let za{z,a} = image[xy{x: x as _,y: y as _}];
+		(a,z) // ¯\_(00)_/¯
+	})).write().to_file(path)
+}
+
+use vector::{minmax, MinMax};
+pub fn bbox(mask: Image<&[f32]>) -> MinMax<uint2> { minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap() }
+#[track_caller] pub fn crop<T, D:std::ops::Deref<Target=[T]>>(image: &Image<D>, bbox: MinMax<uint2>) -> Image<&[T]> { image.slice(bbox.min, bbox.size()) }
