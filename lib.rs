@@ -374,11 +374,11 @@ pub fn save_alpha(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Ima
 	image::save_buffer(path, &Box::from_iter(data.into_iter().map(|&a| (a*(0xFF as f32)) as u8)), size.x, size.y, image::ColorType::L8)
 }
 #[cfg(feature="io")]
-pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<impl Deref<Target=[rgb8]>>) -> Result {
+pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[rgb8]>>) -> Result {
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgb8)
 }
 #[cfg(feature="io")]
-pub fn save_rgba(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<impl Deref<Target=[rgba8]>>) -> Result {
+pub fn save_rgba(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[rgba8]>>) -> Result {
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgba8)
 }
 
@@ -389,8 +389,9 @@ pub fn f32(path: impl AsRef<std::path::Path>) -> Image<Box<[f32]>> {
 	Image::from_xy(size, |xy{x,y}| { let &[exr::prelude::Sample::F32(v)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() else {unreachable!()}; v })
 }
 
+#[cfg(feature="exr")] pub type ExrResult<T=(),E=exr::error::Error> = std::result::Result<T, E>;
 #[cfg(feature="exr")]
-pub fn exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
+pub fn save_exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> ExrResult {
 	use exr::prelude::*;
 	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel(channel).with_pixel_fn(|Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)))
 			.write().to_file(path)
