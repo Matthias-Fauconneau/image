@@ -74,9 +74,6 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	}
 }
 
-//impl<T> Clone for Image<&[T]> { fn clone(&self) -> Self { Self{data: self.data, size: self.size, stride: self.stride} } }
-//impl<T> Image<&[T]> { fn clone_ref(&self) -> Self { Self{data: self.data, size: self.size, stride: self.stride} } }
-
 #[cfg(feature="slice_take")] impl<'t, T> Image<&'t [T]> {
 	#[track_caller] pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
 		assert!(mid <= self.size.y);
@@ -187,8 +184,8 @@ use std::{array, sync::LazyLock};
 pub static sRGB8_OETF12: LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB_OETF(i as f64 / 0xFFF as f64)).round() as u8));
 pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
 pub fn sRGB8(v: f32) -> u8 { oetf8_12(&sRGB8_OETF12, v) } // FIXME: LazyLock::deref(sRGB_forward12) is too slow for image conversion
+pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
 pub fn bgr8_from(bgr: bgrf) -> bgr8 { bgr.map(|c| sRGB8(c)) }
-//impl From<bgrf> for bgr8 { fn from(bgr: bgrf) -> Self { bgr8_from(bgr) } } // bgr8::from(bgrf)
 impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { u32::from(bgr8_from(bgr)) } }
 pub fn sRGB8_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { let oetf = &sRGB8_OETF12; Image::from_iter(linear.size, linear.data.iter().map(|&v| oetf8_12(oetf, v))) }
 
@@ -196,9 +193,9 @@ pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i
 pub fn eotf8(eotf: &[f32; 256], bgr: bgr8) -> bgrf { bgr.map(|c:u8| eotf[c as usize]) }
 pub fn eotf8_rgb(eotf: &[f32; 256], bgr: rgb8) -> rgbf { bgr.map(|c:u8| eotf[c as usize]) }
 //impl From<u32> for bgrf { fn from(bgr: u32) -> Self { eotf8(sRGB8_EOTF, bgr) } } // FIXME: LazyLock::deref(sRGB8_EOTF) is too slow for image conversion
+pub fn eotf(u8: Image<&[rgb8]>) -> Image<Box<[rgbf]>> { let eotf = &sRGB8_EOTF; Image::from_iter(u8.size, u8.data.iter().map(|&v| eotf8_rgb(eotf, v))) }
 
 //use num::Lerp; pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
-pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) } // 4K (fixme: interpolation of a smaller table might be faster)
 pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_rgb(oetf, num::lerp(t, eotf8(eotf, a), b)).into() }
 pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
@@ -275,6 +272,7 @@ pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>
 pub fn blur_xy<const X: u32, const Y: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> {
 	transpose_box_convolve::<Y>(transpose_box_convolve::<X>(image.as_ref()).as_ref())
 }
+#[cfg(feature="new_uninit")]
 pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> { blur_xy::<R,R>(image) }
 
 #[cfg(feature="new_uninit")]
