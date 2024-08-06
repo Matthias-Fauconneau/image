@@ -366,19 +366,23 @@ pub fn rgba8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgba8]>> {
 
 #[cfg(feature="io")] pub type Result<T=(),E=image::ImageError> = std::result::Result<T, E>;
 #[cfg(feature="io")]
-pub fn save_u8(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[u8]>>) -> Result {
+pub fn save_u8(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[u8]>>) -> Result {
+	assert_eq!(*stride, size.x);
 	image::save_buffer(path, &data, size.x, size.y, image::ColorType::L8)
 }
 #[cfg(feature="io")]
-pub fn save_alpha(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[f32]>>) -> Result {
+pub fn save_alpha(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[f32]>>) -> Result {
+	assert_eq!(*stride, size.x);
 	image::save_buffer(path, &Box::from_iter(data.into_iter().map(|&a| (a*(0xFF as f32)) as u8)), size.x, size.y, image::ColorType::L8)
 }
 #[cfg(feature="io")]
-pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[rgb8]>>) -> Result {
+pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[rgb8]>>) -> Result {
+	assert_eq!(*stride, size.x);
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgb8)
 }
 #[cfg(feature="io")]
-pub fn save_rgba(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[rgba8]>>) -> Result {
+pub fn save_rgba(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[rgba8]>>) -> Result {
+	assert_eq!(*stride, size.x);
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgba8)
 }
 
@@ -414,6 +418,20 @@ pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::pat
 	})).write().to_file(path)
 }
 
-use vector::{minmax, MinMax};
-pub fn bbox(mask: Image<&[f32]>) -> MinMax<uint2> { minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap() }
-#[track_caller] pub fn crop<T, D:std::ops::Deref<Target=[T]>>(image: &Image<D>, bbox: MinMax<uint2>) -> Image<&[T]> { image.slice(bbox.min, bbox.size()) }
+use vector::{minmax, MinMax, int2};
+pub fn bbox(mask: &Image<impl Deref<Target=[f32]>>) -> MinMax<uint2> {
+	minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap()
+}
+
+impl<T, D:Deref<Target=[T]>> Image<D> {
+	#[track_caller] pub fn crop(&self, bbox: MinMax<int2>) -> Image<&[T]> {
+		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
+		self.slice(bbox.min, bbox.size())
+	}
+}
+impl<T, D:DerefMut<Target=[T]>> Image<D> {
+	#[track_caller] pub fn crop_mut(&mut self, bbox: MinMax<int2>) -> Image<&mut [T]> {
+		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
+		self.slice_mut(bbox.min, bbox.size())
+	}
+}
