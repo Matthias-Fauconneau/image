@@ -393,8 +393,10 @@ pub fn f32(path: impl AsRef<std::path::Path>) -> Image<Box<[f32]>> {
 #[cfg(feature="exr")]
 pub fn save_exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> ExrResult {
 	use exr::prelude::*;
-	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel(channel).with_pixel_fn(|Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)))
-			.write().to_file(path)
+	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
+		channels: (ChannelDescription::named(channel, SampleType::F32),),
+		pixels: |Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)
+	}).write().to_file(path)
 }
 
 vector::vector!(2 za T T, z a, Depth Opacity);
@@ -408,10 +410,10 @@ pub fn za(path: impl AsRef<std::path::Path>) -> Image<Box<[za<f32>]>> {
 #[cfg(feature="exr")]
 pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
 	use exr::prelude::*;
-	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel("depth").with_channel("opacity").with_pixel_fn(|Vec2(x,y)| {
-		let za{z,a} = image[xy{x: x as _,y: y as _}];
-		(a,z) // ¯\_(00)_/¯
-	})).write().to_file(path)
+	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
+		channels:(ChannelDescription::named("depth", SampleType::F32), ChannelDescription::named("opacity", SampleType::F32)),
+		pixels:|Vec2(x,y)| { let za{z,a} = image[xy{x: x as _,y: y as _}]; (a,z) }
+	}).write().to_file(path)
 }
 
 use vector::{minmax, MinMax, int2};
