@@ -1,12 +1,15 @@
-package={name= 'image', version= '0.0.0', edition= '2021', rust-version='1.80'}
+cargo-features = ["edition2024"]
+package={name= 'image', version= '0.0.0', edition= '2024', rust-version='1.80'}
 lib={path= 'lib.rs'}
 [features]
 type_alias_impl_trait=[]
 slice_take=[]
 new_uninit=[]
 const_trait_impl=[]
-unstable=['type_alias_impl_trait','slice_take','new_uninit','const_trait_impl']
-io = ['image']
+anonymous_lifetime_in_impl_trait=[]
+unstable=['type_alias_impl_trait','slice_take','new_uninit','const_trait_impl','anonymous_lifetime_in_impl_trait']
+io = ['dep:image']
+exr = ['dep:exr']
 
 [dependencies]
 num={git='https://github.com/Matthias-Fauconneau/num'}

@@ -2,6 +2,7 @@
 #![cfg_attr(feature="slice_take",feature(slice_take))]
 #![cfg_attr(feature="new_uninit",feature(new_uninit))]
 #![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
+#![cfg_attr(feature="anonymous_lifetime_in_impl_trait",feature(anonymous_lifetime_in_impl_trait))]
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 pub use vector::{xy, size};
@@ -26,6 +27,8 @@ impl<D> Image<D> {
 	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{data: self.data.as_ref(), size: self.size, stride: self.stride} }
 	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{data: self.data.as_mut(), size:self.size, stride: self.stride} }
 }
+
+//impl<T, D: AsRef<T>> AsRef<Image<T>> for Image<D> { fn as_ref(&self) -> &Image<T> { Self{data: self.data.as_ref(), size: self.size, stride: self.stride} } }
 
 use std::ops::{Deref, DerefMut, Index, IndexMut, Range};
 
@@ -73,6 +76,9 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 		Some(self.slice_mut(sub.min.unsigned(), Some(sub.size().unsigned()).filter(|s| s.x > 0 && s.y > 0)?))
 	}
 }
+
+//impl<T> Clone for Image<&[T]> { fn clone(&self) -> Self { Self{data: self.data, size: self.size, stride: self.stride} } }
+//impl<T> Image<&[T]> { fn clone_ref(&self) -> Self { Self{data: self.data, size: self.size, stride: self.stride} } }
 
 #[cfg(feature="slice_take")] impl<'t, T> Image<&'t [T]> {
 	#[track_caller] pub fn take<'s>(&'s mut self, mid: u32) -> Image<&'t [T]> {
@@ -126,15 +132,17 @@ impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, std::iter::from_fn(|| Some(value))) }
 }
 
+impl<D: IntoIterator> Image<D> { pub fn map<T>(self, f: impl FnMut(<D as IntoIterator>::Item)->T) -> Image<Box<[T]>> { Image::from_iter(self.size, self.data.into_iter().map(f)) } }
+
 impl<D> Image<D> {
-	pub fn map<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T>(&self, f: F) -> Image<Box<[T]>> where Self: Index<uint2> {
+	pub fn map_xy<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T>(&self, f: F) -> Image<Box<[T]>> where Self: Index<uint2> {
 		Image::from_xy(self.size, |p| f(p,&self[p]))
 	}
 }
 
 impl<D> Image<D> {
 	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where D: AsRef<[T]>, T:Clone {
-		Image::from_iter(self.size, self.as_ref().map(|row| row).flatten().cloned())
+		Image::from_iter(self.size, Iterator::map(self.as_ref(), |row| row).flatten().cloned())
 	}
 }
 
@@ -201,12 +209,12 @@ pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf)
 }
 
 // /!\ keeps floats in the initial 8bit space (sRGB), i.e incorrect for interpolations
-pub fn from_u8(image@Image{size,..}: Image<&[u8]>) -> Image<Box<[f32]>> { Image::from_iter(size, image.data.into_iter().map(|&v| f32::from(v))) }
-pub fn from_rgb8(image@Image{size,..}: Image<&[rgb8]>) -> Image<Box<[rgb<f32>]>> { Image::from_iter(size, image.data.into_iter().map(|&v| rgb::<f32>::from(v))) }
-pub fn from_rgbaf(image@Image{size,..}: Image<&[rgba<f32>]>) -> Image<Box<[rgba8]>> { Image::from_iter(size, image.data.into_iter().map(|&v| rgba::<u8>::from(v))) }
-pub fn from_rgbf(image@Image{size,..}: Image<&[rgb<f32>]>) -> Image<Box<[rgb8]>> { Image::from_iter(size, image.data.into_iter().map(|&v| rgb::<u8>::from(v))) }
+#[cfg(feature="anonymous_lifetime_in_impl_trait")] pub fn from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[f32]>> { image.as_ref().map(|&u8| f32::from(u8)) }
+#[cfg(feature="anonymous_lifetime_in_impl_trait")] pub fn from_rgb8(image: Image<impl IntoIterator<Item=&rgb8>>) -> Image<Box<[rgbf]>> { image.map(|&rgb8| rgbf::from(rgb8)) }
+#[cfg(feature="anonymous_lifetime_in_impl_trait")] pub fn from_rgbf(image: Image<impl IntoIterator<Item=&rgbf>>) -> Image<Box<[rgb8]>> { image.map(|&rgbf| rgb8::from(rgbf)) }
+pub fn from_rgbaf(image: Image<impl IntoIterator<Item=rgbaf>>) -> Image<Box<[rgba8]>> { image.map(rgba8::from) }
 
-pub fn downsample<T: Copy, D: std::ops::Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[F::Output]>>
+pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[F::Output]>>
 	where F: From<T>+std::iter::Sum<F>+std::ops::Div<f32> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}|
 			(0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| F::from(source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])))
@@ -222,8 +230,9 @@ pub fn downsample_rgba<const FACTOR: u32>(ref source: Image<&[rgba<f32>]>) -> Im
 	})
 }
 
-pub fn bilinear(target_size: size, ref image@Image{size,..}: Image<&[f32]>) -> Image<Box<[f32]>> {
-	let scale = xy::<f32>::from(size)/xy::<f32>::from(target_size);
+use num::Lerp;
+pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[<Image<D> as Index<uint2>>::Output]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: Lerp<<Image<D> as Index<uint2>>::Output> {
+	let scale = xy::<f32>::from(*size)/xy::<f32>::from(target_size);
 	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| {
 		let s = scale*xy{x: x as f32,y: y as f32};
 		let i = uint2::from(s);
@@ -235,15 +244,15 @@ pub fn bilinear(target_size: size, ref image@Image{size,..}: Image<&[f32]>) -> I
 }
 
 #[cfg(feature="io")]
-pub fn bilinear_rgb8(target_size: size, image@Image{size,..}: Image<&[rgb8]>) -> Image<Box<[rgb8]>> {
+pub fn bilinear_rgb8<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[rgb8]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<[u8; 3]> {
 	let ref image = image::imageops::resize(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Rgb(image[xy{x,y}].into())), target_size.x, target_size.y, image::imageops::FilterType::Triangle);
 	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0.into())).flatten())
 }
 
 #[cfg(feature="new_uninit")]
-pub fn transpose_box_convolve<const R: u32>(source: Image<&[f32]>) -> Image<Box<[f32]>> {
-	let mut transpose = Image::uninitialized(source.size.yx());
-	for y in 0..source.size.y {
+pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>) -> Image<Box<[f32]>> {
+	let mut transpose = Image::uninitialized(size.yx());
+	for y in 0..size.y {
 		let r : f64 = R as f64;
 		let mut sum : f64 = source[xy{x: 0, y}] as f64*r;
 		for x in 0..R { sum += source[xy{x, y}] as f64; }
@@ -252,13 +261,13 @@ pub fn transpose_box_convolve<const R: u32>(source: Image<&[f32]>) -> Image<Box<
 			transpose[xy{x: y, y: x}] = (sum/(r+1.+r)) as f32;
 			sum -= source[xy{x: 0, y}] as f64;
 		}
-		for x in R..source.size.x-R {
+		for x in R..size.x-R {
 			sum += source[xy{x: x+R, y}] as f64;
 			transpose[xy{x: y, y: x}] = (sum/(r+1.+r)) as f32;
 			sum -= source[xy{x: (x as i32-R as i32) as u32, y}] as f64;
 		}
-		for x in source.size.x-R..source.size.x {
-				sum += source[xy{x: source.size.x-1, y}] as f64;
+		for x in size.x-R..size.x {
+				sum += source[xy{x: size.x-1, y}] as f64;
 				transpose[xy{x: y, y: x}] = (sum/(r+1.+r)) as f32;
 				sum -= source[xy{x: (x as i32-R as i32) as u32, y}] as f64;
 		}
@@ -266,7 +275,7 @@ pub fn transpose_box_convolve<const R: u32>(source: Image<&[f32]>) -> Image<Box<
 	transpose
 }
 #[cfg(feature="new_uninit")]
-pub fn blur<const R: u32>(image: Image<&[f32]>) -> Image<Box<[f32]>> {
+pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> {
 	transpose_box_convolve::<R>(transpose_box_convolve::<R>(image.as_ref()).as_ref())
 }
 
@@ -296,12 +305,12 @@ pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> I
 	transpose
 }
 #[cfg(feature="new_uninit")]
-pub fn blur_rgb<const R: u32>(image: Image<&[rgb<f32>]>) -> Image<Box<[rgb<f32>]>> {
+pub fn blur_rgb<const R: u32>(image: &Image<impl AsRef<[rgb<f32>]>>) -> Image<Box<[rgb<f32>]>> {
 	transpose_box_convolve_rgb::<R>(transpose_box_convolve_rgb::<R>(image.as_ref()).as_ref())
 }
-#[cfg(feature="new_uninit")]
+#[cfg(feature="new_uninit")]#[cfg(feature="anonymous_lifetime_in_impl_trait")]
 pub fn blur_rgb8<const R: u32>(image: Image<&[rgb8]>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
-	from_rgbf(blur_rgb::<R>(from_rgb8(image).as_ref()).as_ref())
+	from_rgbf(blur_rgb::<R>(&from_rgb8(image)).as_ref())
 }
 
 #[cfg(feature="new_uninit")]
@@ -329,9 +338,9 @@ pub fn transpose_box_convolve_rgba<const R: u32>(source: Image<&[rgba<f32>]>) ->
 	}
 	transpose
 }
-#[cfg(feature="new_uninit")]
-pub fn blur_rgba<const R: u32>(image: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
-	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(Image::map(&image, |_,&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|_,&rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
+#[cfg(feature="new_uninit")]#[cfg(feature="anonymous_lifetime_in_impl_trait")]
+pub fn blur_rgba<const R: u32>(image: Image<impl AsRef<[rgba<f32>]>>) -> Image<Box<[rgba<f32>]>> {
+	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(image.as_ref().map(|&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
 }
 
 #[cfg(feature="io")]
@@ -357,19 +366,19 @@ pub fn rgba8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgba8]>> {
 
 #[cfg(feature="io")] pub type Result<T=(),E=image::ImageError> = std::result::Result<T, E>;
 #[cfg(feature="io")]
-pub fn save_u8<D: std::ops::Deref<Target=[u8]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+pub fn save_u8(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[u8]>>) -> Result {
 	image::save_buffer(path, &data, size.x, size.y, image::ColorType::L8)
 }
 #[cfg(feature="io")]
-pub fn save_alpha<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
-	image::save_buffer(path, &Box::from_iter(data.iter().map(|a| (a*(0xFF as f32)) as u8)), size.x, size.y, image::ColorType::L8)
+pub fn save_alpha(path: impl AsRef<std::path::Path>, Image{size, data, ..}: &Image<impl Deref<Target=[f32]>>) -> Result {
+	image::save_buffer(path, &Box::from_iter(data.into_iter().map(|&a| (a*(0xFF as f32)) as u8)), size.x, size.y, image::ColorType::L8)
 }
 #[cfg(feature="io")]
-pub fn save_rgb<D: std::ops::Deref<Target=[rgb8]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<impl Deref<Target=[rgb8]>>) -> Result {
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgb8)
 }
 #[cfg(feature="io")]
-pub fn save_rgba<D: std::ops::Deref<Target=[rgba8]>+Sync>(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<D>) -> Result {
+pub fn save_rgba(path: impl AsRef<std::path::Path>, Image{size, data, ..}: Image<impl Deref<Target=[rgba8]>>) -> Result {
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgba8)
 }
 
@@ -381,13 +390,22 @@ pub fn f32(path: impl AsRef<std::path::Path>) -> Image<Box<[f32]>> {
 }
 
 #[cfg(feature="exr")]
-pub fn exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
+pub fn exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
 	use exr::prelude::*;
 	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel(channel).with_pixel_fn(|Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)))
 			.write().to_file(path)
 }
+
 vector::vector!(2 za T T, z a, Depth Opacity);
-#[cfg(feature="exr")] pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
+
+#[cfg(feature="exr")]
+pub fn za(path: impl AsRef<std::path::Path>) -> Image<Box<[za<f32>]>> {
+	let exr = exr::prelude::read_first_flat_layer_from_file(path).unwrap().layer_data;
+	Image::from_xy({let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}}, |xy{x,y}| if let &[exr::prelude::Sample::F32(z), exr::prelude::Sample::F32(a)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() { za{z,a} } else { unimplemented!("") })
+}
+
+#[cfg(feature="exr")]
+pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
 	use exr::prelude::*;
 	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels::build().with_channel("depth").with_channel("opacity").with_pixel_fn(|Vec2(x,y)| {
 		let za{z,a} = image[xy{x: x as _,y: y as _}];
