@@ -2,7 +2,6 @@
 #![cfg_attr(feature="slice_take",feature(slice_take))]
 #![cfg_attr(feature="new_uninit",feature(new_uninit))]
 #![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
-#![cfg_attr(feature="anonymous_lifetime_in_impl_trait",feature(anonymous_lifetime_in_impl_trait))]
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 pub use vector::{xy, size};
@@ -27,8 +26,6 @@ impl<D> Image<D> {
 	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{data: self.data.as_ref(), size: self.size, stride: self.stride} }
 	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{data: self.data.as_mut(), size:self.size, stride: self.stride} }
 }
-
-//impl<T, D: AsRef<T>> AsRef<Image<T>> for Image<D> { fn as_ref(&self) -> &Image<T> { Self{data: self.data.as_ref(), size: self.size, stride: self.stride} } }
 
 use std::ops::{Deref, DerefMut, Index, IndexMut, Range};
 
@@ -209,10 +206,10 @@ pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf)
 }
 
 // /!\ keeps floats in the initial 8bit space (sRGB), i.e incorrect for interpolations
-#[cfg(feature="anonymous_lifetime_in_impl_trait")] pub fn from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[f32]>> { image.as_ref().map(|&u8| f32::from(u8)) }
-#[cfg(feature="anonymous_lifetime_in_impl_trait")] pub fn from_rgb8(image: Image<impl IntoIterator<Item=&rgb8>>) -> Image<Box<[rgbf]>> { image.map(|&rgb8| rgbf::from(rgb8)) }
-#[cfg(feature="anonymous_lifetime_in_impl_trait")] pub fn from_rgbf(image: Image<impl IntoIterator<Item=&rgbf>>) -> Image<Box<[rgb8]>> { image.map(|&rgbf| rgb8::from(rgbf)) }
-pub fn from_rgbaf(image: Image<impl IntoIterator<Item=rgbaf>>) -> Image<Box<[rgba8]>> { image.map(rgba8::from) }
+pub fn from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[f32]>> { image.as_ref().map(|&u8| f32::from(u8)) }
+pub fn from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { image.as_ref().map(|&rgb8| rgbf::from(rgb8)) }
+pub fn from_rgbf(image: &Image<impl AsRef<[rgbf]>>) -> Image<Box<[rgb8]>> { image.as_ref().map(|&rgbf| rgb8::from(rgbf)) }
+pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgbaf| rgba8::from(rgbaf)) }
 
 pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[F::Output]>>
 	where F: From<T>+std::iter::Sum<F>+std::ops::Div<f32> {
@@ -275,9 +272,10 @@ pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>
 	transpose
 }
 #[cfg(feature="new_uninit")]
-pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> {
-	transpose_box_convolve::<R>(transpose_box_convolve::<R>(image.as_ref()).as_ref())
+pub fn blur_xy<const X: u32, const Y: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> {
+	transpose_box_convolve::<Y>(transpose_box_convolve::<X>(image.as_ref()).as_ref())
 }
+pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> { blur_xy::<R,R>(image) }
 
 #[cfg(feature="new_uninit")]
 pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> Image<Box<[rgb<f32>]>> {
@@ -308,9 +306,9 @@ pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> I
 pub fn blur_rgb<const R: u32>(image: &Image<impl AsRef<[rgb<f32>]>>) -> Image<Box<[rgb<f32>]>> {
 	transpose_box_convolve_rgb::<R>(transpose_box_convolve_rgb::<R>(image.as_ref()).as_ref())
 }
-#[cfg(feature="new_uninit")]#[cfg(feature="anonymous_lifetime_in_impl_trait")]
-pub fn blur_rgb8<const R: u32>(image: Image<&[rgb8]>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
-	from_rgbf(blur_rgb::<R>(&from_rgb8(image)).as_ref())
+#[cfg(feature="new_uninit")]
+pub fn blur_rgb8<const R: u32>(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
+	from_rgbf(&blur_rgb::<R>(&from_rgb8(image)))
 }
 
 #[cfg(feature="new_uninit")]
@@ -338,8 +336,8 @@ pub fn transpose_box_convolve_rgba<const R: u32>(source: Image<&[rgba<f32>]>) ->
 	}
 	transpose
 }
-#[cfg(feature="new_uninit")]#[cfg(feature="anonymous_lifetime_in_impl_trait")]
-pub fn blur_rgba<const R: u32>(image: Image<impl AsRef<[rgba<f32>]>>) -> Image<Box<[rgba<f32>]>> {
+#[cfg(feature="new_uninit")]
+pub fn blur_rgba<const R: u32>(image: &Image<impl AsRef<[rgba<f32>]>>) -> Image<Box<[rgba<f32>]>> {
 	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(image.as_ref().map(|&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
 }
 
