@@ -412,7 +412,7 @@ pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::pat
 	use exr::prelude::*;
 	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
 		channels:(ChannelDescription::named("depth", SampleType::F32), ChannelDescription::named("opacity", SampleType::F32)),
-		pixels:|Vec2(x,y)| { let za{z,a} = image[xy{x: x as _,y: y as _}]; (a,z) }
+		pixels:|Vec2(x,y)| { let za{z,a} = image[xy{x: x as _,y: y as _}]; (z,a) }
 	}).write().to_file(path)
 }
 
