@@ -173,6 +173,9 @@ pub type rgb8 = rgb<u8>;
 pub type bgra8 = bgra<u8>;
 pub type rgba8 = rgba<u8>;
 
+pub fn rgba8_from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&v| rgba::from(rgba{r:v,g:v,b:v,a:0xFF})) }
+pub fn rgba8_from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgb{r,g,b}| rgba::from(rgba{r,g,b,a:0xFF})) }
+
 impl From<u32> for bgr8 { fn from(bgr: u32) -> Self { bgr{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF} } }
 impl From<u32> for bgra8 { fn from(bgr: u32) -> Self { bgra{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF, a: (bgr>>24) as u8 & 0xFF} } }
 impl From<bgr8> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
