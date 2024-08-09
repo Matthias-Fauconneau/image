@@ -7,6 +7,7 @@
 pub use vector::{xy, uint2, size, int2};
 use vector::Rect;
 
+#[derive(std::hash::Hash)]
 pub struct Image<D> {
 	pub data : D,
 	pub size : size,
@@ -387,14 +388,15 @@ pub fn save_rgba(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &
 	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgba8)
 }
 
+#[cfg(feature="exr")] pub type ExrResult<T=(),E=exr::error::Error> = std::result::Result<T, E>;
+
 #[cfg(feature="exr")]
-pub fn f32(path: impl AsRef<std::path::Path>) -> Image<Box<[f32]>> {
-	let exr = exr::prelude::read_first_flat_layer_from_file(path).unwrap().layer_data;
+pub fn f32(path: impl AsRef<std::path::Path>) -> ExrResult<Image<Box<[f32]>>> {
+	let exr = exr::prelude::read_first_flat_layer_from_file(path)?.layer_data;
 	let size = {let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}};
-	Image::from_xy(size, |xy{x,y}| { let &[exr::prelude::Sample::F32(v)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() else {unreachable!()}; v })
+	Ok(Image::from_xy(size, |xy{x,y}| { let &[exr::prelude::Sample::F32(v)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() else {unreachable!()}; v }))
 }
 
-#[cfg(feature="exr")] pub type ExrResult<T=(),E=exr::error::Error> = std::result::Result<T, E>;
 #[cfg(feature="exr")]
 pub fn save_exr<D: std::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> ExrResult {
 	use exr::prelude::*;
