@@ -4,8 +4,8 @@
 #![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
-pub use vector::{xy, size};
-use vector::{uint2, Rect};
+pub use vector::{xy, uint2, size};
+use vector::Rect;
 
 pub struct Image<D> {
 	pub data : D,
