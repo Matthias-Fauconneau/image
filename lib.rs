@@ -4,7 +4,7 @@
 #![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
-pub use vector::{xy, uint2, size};
+pub use vector::{xy, uint2, size, int2};
 use vector::Rect;
 
 pub struct Image<D> {
@@ -421,7 +421,7 @@ pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::pat
 	}).write().to_file(path)
 }
 
-use vector::{minmax, MinMax, int2};
+use vector::{minmax, MinMax};
 pub fn bbox(mask: &Image<impl Deref<Target=[f32]>>) -> MinMax<uint2> {
 	minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap()
 }
