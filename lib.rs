@@ -227,17 +227,19 @@ pub fn downsample_rgba<const FACTOR: u32>(ref source: Image<&[rgba<f32>]>) -> Im
 	})
 }
 
+pub use vector::vec2;
 use num::Lerp;
+pub fn bilinear_sample<D>(image@Image{size,..}: &Image<D>, s: vec2) -> <Image<D> as Index<uint2>>::Output where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: Lerp<<Image<D> as Index<uint2>>::Output> {
+	let i = uint2::from(s);
+	let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| image[xy{x: ((i.x as i32+d.x) as u32+size.x)%size.x, y: ((i.y as i32+d.y).max(0) as u32).min(size.y-1)}]);
+	let f = s-s.map(f32::floor);
+	use num::lerp;
+	lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
+}
+
 pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[<Image<D> as Index<uint2>>::Output]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: Lerp<<Image<D> as Index<uint2>>::Output> {
 	let scale = xy::<f32>::from(*size)/xy::<f32>::from(target_size);
-	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| {
-		let s = scale*xy{x: x as f32,y: y as f32};
-		let i = uint2::from(s);
-		let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| image[xy{x: ((i.x as i32+d.x) as u32+size.x)%size.x, y: ((i.y as i32+d.y).max(0) as u32).min(size.y-1)}]);
-		let f = s-s.map(f32::floor);
-		use num::lerp;
-		lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
-	})).flatten())
+	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| bilinear_sample(image, scale*xy{x: x as f32,y: y as f32}))).flatten())
 }
 
 #[cfg(feature="io")]
@@ -411,7 +413,7 @@ pub fn za(path: impl AsRef<std::path::Path>) -> Image<Box<[za<f32>]>> {
 }
 
 #[cfg(feature="exr")]
-pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: Image<D>) -> exr::error::Result<()> {
+pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
 	use exr::prelude::*;
 	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
 		channels:(ChannelDescription::named("depth", SampleType::F32), ChannelDescription::named("opacity", SampleType::F32)),
