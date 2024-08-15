@@ -9,6 +9,7 @@ const_trait_impl=[]
 unstable=['type_alias_impl_trait','slice_take','new_uninit','const_trait_impl']
 io = ['dep:image']
 exr = ['dep:exr']
+#median = ['dep:imageproc']
 
 [dependencies]
 num={git='https://github.com/Matthias-Fauconneau/num'}
@@ -16,3 +17,4 @@ vector={git='https://github.com/Matthias-Fauconneau/vector'}
 bytemuck='*'
 image={version='*', default-features=false, features=['png','jpeg'], optional=true}
 exr={version='*', optional=true}
+#imageproc={version='*', optional=true}

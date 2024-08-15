@@ -48,6 +48,7 @@ impl<D> IndexMut<uint2> for Image<D> where Self: IndexMut<usize> {
 
 impl<T, D:Deref<Target=[T]>> Image<D> {
 	pub fn get(&self, i: uint2) -> Option<&T> { self.index(i).map(|i| &self[i]) }
+	pub unsafe fn get_unchecked(&self, x: u32, y: u32) -> &T { unsafe { self.data.get_unchecked((y * self.stride + x) as usize) } }
 	pub fn rows(&self, rows: Range<u32>) -> Image<&[T]> {
 		assert!(rows.end <= self.size.y);
 		Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &self.data[(rows.start*self.stride) as usize..]}
@@ -61,6 +62,7 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 
 impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	pub fn get_mut(&mut self, i: uint2) -> Option<&mut T> { self.index(i).map(|i| &mut self[i]) }
+	pub unsafe fn get_unchecked_mut(&mut self, x: u32, y: u32) -> &mut T { unsafe { self.data.get_unchecked_mut((y * self.stride + x) as usize) } }
 	pub fn rows_mut(&mut self, rows: Range<u32>) -> Image<&mut [T]> {
 		assert!(rows.end <= self.size.y);
 		Image{size: xy{x: self.size.x, y: rows.len() as u32}, stride: self.stride, data: &mut self.data[(rows.start*self.stride) as usize..]}
@@ -212,6 +214,12 @@ pub fn from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { imag
 pub fn from_rgbf(image: &Image<impl AsRef<[rgbf]>>) -> Image<Box<[rgb8]>> { image.as_ref().map(|&rgbf| rgb8::from(rgbf)) }
 pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgbaf| rgba8::from(rgbaf)) }
 
+pub fn nearest<T:Copy>(size: size, source: &Image<impl Deref<Target=[T]>>) -> Image<Box<[T]>> { Image::from_xy(size, |xy{x,y}| source[xy{x,y}*source.size/size]) }
+
+pub fn downsample_sum<const FACTOR: u32, T:Copy+std::iter::Sum>(source: &Image<impl std::ops::Deref<Target=[T]>>) -> Image<Box<[T]>> {
+	Image::from_xy(source.size/FACTOR, |xy{x,y}| (0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])).flatten().sum::<T>())
+}
+
 pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[F::Output]>>
 	where F: From<T>+std::iter::Sum<F>+std::ops::Div<f32> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}|
@@ -238,10 +246,16 @@ pub fn bilinear_sample<D>(image@Image{size,..}: &Image<D>, s: vec2) -> <Image<D>
 	lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
 }
 
-pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[<Image<D> as Index<uint2>>::Output]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: Lerp<<Image<D> as Index<uint2>>::Output> {
+#[cfg(feature="io")]
+pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[f32]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<f32> {
+	let ref image = image::imageops::resize(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Luma([image[xy{x,y}].into()])), target_size.x, target_size.y, image::imageops::FilterType::Triangle);
+	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0[0])).flatten())
+}
+
+/*pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[<Image<D> as Index<uint2>>::Output]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: Lerp<<Image<D> as Index<uint2>>::Output> {
 	let scale = xy::<f32>::from(*size)/xy::<f32>::from(target_size);
 	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| bilinear_sample(image, scale*xy{x: x as f32,y: y as f32}))).flatten())
-}
+}*/
 
 #[cfg(feature="io")]
 pub fn bilinear_rgb8<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[rgb8]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<[u8; 3]> {
@@ -440,3 +454,9 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 		self.slice_mut(bbox.min, bbox.size())
 	}
 }
+
+/*#[cfg(feature="median")]
+pub fn median<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[rgb8]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<[u8; 3]> {
+	let ref image = imageproc::filter::median_filter(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Rgb(image[xy{x,y}].into())), 256, 256);
+	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0.into())).flatten())
+}**/
