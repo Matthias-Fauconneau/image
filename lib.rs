@@ -429,7 +429,7 @@ pub fn za(path: impl AsRef<std::path::Path>) -> Image<Box<[za<f32>]>> {
 }
 
 #[cfg(feature="exr")]
-pub fn exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
+pub fn save_exr2<D: std::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<std::path::Path>, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
 	use exr::prelude::*;
 	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
 		channels:(ChannelDescription::named("depth", SampleType::F32), ChannelDescription::named("opacity", SampleType::F32)),
