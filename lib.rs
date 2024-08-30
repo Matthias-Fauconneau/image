@@ -1,6 +1,5 @@
 #![cfg_attr(feature="type_alias_impl_trait",feature(type_alias_impl_trait))]
 #![cfg_attr(feature="slice_take",feature(slice_take))]
-#![cfg_attr(feature="new_uninit",feature(new_uninit))]
 #![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
 
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
@@ -122,7 +121,7 @@ pub fn fill<T:Copy+Send>(target: &mut Image<&mut [T]>, value: T) { target.set(|_
 impl<T> Image<Box<[T]>> {
 	#[track_caller] pub fn from_iter<I:IntoIterator<Item=T>>(size : size, iter : I) -> Self { Self::new(size, iter.into_iter().take((size.y*size.x) as usize).collect()) }
 	pub fn from_xy<F:Fn(uint2)->T>(size : size, ref f: F) -> Self { Self::from_iter(size, (0..size.y).map(|y| (0..size.x).map(move |x| f(xy{x,y}))).flatten()) }
-	#[cfg(feature="new_uninit")] pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
+	pub fn uninitialized(size: size) -> Self { Self::new(size, unsafe{Box::new_uninit_slice((size.x * size.y) as usize).assume_init()}) }
 }
 
 impl<T:Copy> Image<Box<[T]>> {
@@ -264,7 +263,6 @@ pub fn bilinear_rgb8<D>(target_size: size, image@Image{size,..}: &Image<D>) -> I
 	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0.into())).flatten())
 }
 
-#[cfg(feature="new_uninit")]
 pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>) -> Image<Box<[f32]>> {
 	let mut transpose = Image::uninitialized(size.yx());
 	for y in 0..size.y {
@@ -289,14 +287,13 @@ pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>
 	}
 	transpose
 }
-#[cfg(feature="new_uninit")]
+
 pub fn blur_xy<const X: u32, const Y: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> {
 	transpose_box_convolve::<Y>(transpose_box_convolve::<X>(image.as_ref()).as_ref())
 }
-#[cfg(feature="new_uninit")]
+
 pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> { blur_xy::<R,R>(image) }
 
-#[cfg(feature="new_uninit")]
 pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> Image<Box<[rgb<f32>]>> {
 	let mut transpose = Image::uninitialized(source.size.yx());
 	for y in 0..source.size.y {
@@ -321,16 +318,15 @@ pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> I
 	}
 	transpose
 }
-#[cfg(feature="new_uninit")]
+
 pub fn blur_rgb<const R: u32>(image: &Image<impl AsRef<[rgb<f32>]>>) -> Image<Box<[rgb<f32>]>> {
 	transpose_box_convolve_rgb::<R>(transpose_box_convolve_rgb::<R>(image.as_ref()).as_ref())
 }
-#[cfg(feature="new_uninit")]
+
 pub fn blur_rgb8<const R: u32>(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
 	from_rgbf(&blur_rgb::<R>(&from_rgb8(image)))
 }
 
-#[cfg(feature="new_uninit")]
 pub fn transpose_box_convolve_rgba<const R: u32>(source: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
 	let mut transpose = Image::uninitialized(source.size.yx());
 	for y in 0..source.size.y {
@@ -355,7 +351,7 @@ pub fn transpose_box_convolve_rgba<const R: u32>(source: Image<&[rgba<f32>]>) ->
 	}
 	transpose
 }
-#[cfg(feature="new_uninit")]
+
 pub fn blur_rgba<const R: u32>(image: &Image<impl AsRef<[rgba<f32>]>>) -> Image<Box<[rgba<f32>]>> {
 	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(image.as_ref().map(|&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
 }
