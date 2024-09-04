@@ -184,7 +184,7 @@ impl From<bgr8> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | 
 
 pub fn lerp_rgb8(t: f32, a: rgb8, b: rgb8) -> rgb8 { let t8:u16=(t*(0x100 as f32)) as u16; rgb::<u8>::from(((0x100-t8)*rgb::<u16>::from(a) + t8*rgb::<u16>::from(b))/0x100) }
 
-fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+pub fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
 use std::{array, sync::LazyLock};
 pub static sRGB8_OETF12: LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB_OETF(i as f64 / 0xFFF as f64)).round() as u8));
 pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
