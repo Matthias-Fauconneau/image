@@ -1,7 +1,3 @@
-#![cfg_attr(feature="no-std", no_std)]
-#![cfg_attr(feature="type_alias_impl_trait",feature(type_alias_impl_trait))]
-#![cfg_attr(feature="slice_take",feature(slice_take))]
-#![cfg_attr(feature="const_trait_impl",feature(const_trait_impl))]
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 use std::boxed::Box;
 pub use vector::{xy, uint2, size, int2};
@@ -184,26 +180,26 @@ impl From<bgr8> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | 
 
 pub fn lerp_rgb8(t: f32, a: rgb8, b: rgb8) -> rgb8 { let t8:u16=(t*(0x100 as f32)) as u16; rgb::<u8>::from(((0x100-t8)*rgb::<u16>::from(a) + t8*rgb::<u16>::from(b))/0x100) }
 
-#[cfg(feature="std")] pub fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
-#[cfg(feature="std")] use {core::array, std::sync::LazyLock};
-#[cfg(feature="std")]pub static sRGB8_OETF12: LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB_OETF(i as f64 / 0xFFF as f64)).round() as u8));
-#[cfg(feature="std")] pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
-#[cfg(feature="std")] pub fn sRGB8(v: f32) -> u8 { oetf8_12(&sRGB8_OETF12, v) } // FIXME: LazyLock::deref(sRGB_forward12) is too slow for image conversion
-#[cfg(feature="std")] pub fn oetf8_12_bgr(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) }
-#[cfg(feature="std")] pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], rgb: rgbf) -> rgb<u8> { rgb.map(|c| oetf8_12(oetf, c)) }
-#[cfg(feature="std")] pub fn bgr8_from(bgr: bgrf) -> bgr8 { bgr.map(|c| sRGB8(c)) }
-#[cfg(feature="std")] impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { u32::from(bgr8_from(bgr)) } }
-#[cfg(feature="std")] pub fn sRGB8_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { let oetf = &sRGB8_OETF12; Image::from_iter(linear.size, linear.data.iter().map(|&v| oetf8_12(oetf, v))) }
+pub fn sRGB_OETF(linear: f64) -> f64 { if linear > 0.0031308 {1.055*linear.powf(1./2.4)-0.055} else {12.92*linear} }
+use {core::array, std::sync::LazyLock};
+pub static sRGB8_OETF12: LazyLock<[u8; 0x1000]> = LazyLock::new(|| array::from_fn(|i|(0xFF as f64 * sRGB_OETF(i as f64 / 0xFFF as f64)).round() as u8));
+pub fn oetf8_12(oetf: &[u8; 0x1000], v: f32) -> u8 { oetf[(0xFFF as f32*v) as usize] } // 4K (fixme: interpolation of a smaller table might be faster)
+pub fn sRGB8(v: f32) -> u8 { oetf8_12(&sRGB8_OETF12, v) } // FIXME: LazyLock::deref(sRGB_forward12) is too slow for image conversion
+pub fn oetf8_12_bgr(oetf: &[u8; 0x1000], bgr: bgrf) -> bgr<u8> { bgr.map(|c| oetf8_12(oetf, c)) }
+pub fn oetf8_12_rgb(oetf: &[u8; 0x1000], rgb: rgbf) -> rgb<u8> { rgb.map(|c| oetf8_12(oetf, c)) }
+pub fn bgr8_from(bgr: bgrf) -> bgr8 { bgr.map(|c| sRGB8(c)) }
+impl From<bgrf> for u32 { fn from(bgr: bgrf) -> Self { u32::from(bgr8_from(bgr)) } }
+pub fn sRGB8_from_linear(linear : &Image<&[f32]>) -> Image<Box<[u8]>> { let oetf = &sRGB8_OETF12; Image::from_iter(linear.size, linear.data.iter().map(|&v| oetf8_12(oetf, v))) }
 
-#[cfg(feature="std")] pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
+pub const sRGB8_EOTF : LazyLock<[f32; 256]> = LazyLock::new(|| array::from_fn(|i| { let x = i as f64 / 255.; (if x > 0.04045 { ((x+0.055)/1.055).powf(2.4) } else { x / 12.92 }) as f32}));
 pub fn eotf8(eotf: &[f32; 256], bgr: bgr8) -> bgrf { bgr.map(|c:u8| eotf[c as usize]) }
 pub fn eotf8_rgb(eotf: &[f32; 256], bgr: rgb8) -> rgbf { bgr.map(|c:u8| eotf[c as usize]) }
 //impl From<u32> for bgrf { fn from(bgr: u32) -> Self { eotf8(sRGB8_EOTF, bgr) } } // FIXME: LazyLock::deref(sRGB8_EOTF) is too slow for image conversion
-#[cfg(feature="std")] pub fn eotf(u8: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { let eotf = &sRGB8_EOTF; Image::from_iter(u8.size, u8.data.as_ref().iter().map(|&v| eotf8_rgb(eotf, v))) }
+pub fn eotf(u8: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { let eotf = &sRGB8_EOTF; Image::from_iter(u8.size, u8.data.as_ref().iter().map(|&v| eotf8_rgb(eotf, v))) }
 
 //use num::Lerp; pub fn lerp(t: f32, a: u32, b: bgrf) -> u32 { u32::/*sRGB*/from(t.lerp(bgrf::/*sRGB⁻¹*/from(a), b)) }
-#[cfg(feature="std")] pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_bgr(oetf, num::lerp(t, eotf8(eotf, a), b)).into() }
-#[cfg(feature="std")] pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
+pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_bgr(oetf, num::lerp(t, eotf8(eotf, a), b)).into() }
+pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
 	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, bgr8::from(target), color));
 }
@@ -234,31 +230,6 @@ pub fn downsample_rgba<const FACTOR: u32>(ref source: Image<&[rgba<f32>]>) -> Im
 		if a == 0. { return rgba{r: 0., g: 0., b: 0., a} }
 		rgba{r: r / a, g: g / a, b: b /a, a: a / (FACTOR*FACTOR) as f32}
 	})
-}
-
-#[cfg(feature="std")] pub fn bilinear_sample<D>(image@Image{size,..}: &Image<D>, s: vector::vec2) -> <Image<D> as Index<uint2>>::Output where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: num::Lerp<<Image<D> as Index<uint2>>::Output> {
-	let i = uint2::from(s);
-	let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| image[xy{x: ((i.x as i32+d.x) as u32+size.x)%size.x, y: ((i.y as i32+d.y).max(0) as u32).min(size.y-1)}]);
-	let f = s-s.map(f32::floor);
-	use num::lerp;
-	lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
-}
-
-#[cfg(feature="io")]
-pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[f32]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<f32> {
-	let ref image = image::imageops::resize(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Luma([image[xy{x,y}].into()])), target_size.x, target_size.y, image::imageops::FilterType::Triangle);
-	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0[0])).flatten())
-}
-
-/*pub fn bilinear<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[<Image<D> as Index<uint2>>::Output]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: Lerp<<Image<D> as Index<uint2>>::Output> {
-	let scale = xy::<f32>::from(*size)/xy::<f32>::from(target_size);
-	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| bilinear_sample(image, scale*xy{x: x as f32,y: y as f32}))).flatten())
-}*/
-
-#[cfg(feature="io")]
-pub fn bilinear_rgb8<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[rgb8]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<[u8; 3]> {
-	let ref image = image::imageops::resize(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Rgb(image[xy{x,y}].into())), target_size.x, target_size.y, image::imageops::FilterType::Triangle);
-	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0.into())).flatten())
 }
 
 pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>) -> Image<Box<[f32]>> {
@@ -354,84 +325,6 @@ pub fn blur_rgba<const R: u32>(image: &Image<impl AsRef<[rgba<f32>]>>) -> Image<
 	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(image.as_ref().map(|&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
 }
 
-#[cfg(feature="io")]
-pub fn u8(path: impl AsRef<core::path::Path>) -> Image<Box<[u8]>> {
-	let image = image::open(path).unwrap().into_luma8();
-	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 1, channel_stride: 1, width: image.width(), width_stride: 1, height: image.height(), height_stride: image.width() as _});
-	Image::new(xy{x: image.width(), y: image.height()}, image.into_raw().into_boxed_slice())
-}
-
-#[cfg(feature="io")]
-pub fn rgb8(path: impl AsRef<core::path::Path>) -> Image<Box<[rgb8]>> {
-	let image = image::open(path).unwrap().into_rgb8();
-	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 3, channel_stride: 1, width: image.width(), width_stride: 3, height: image.height(), height_stride: 3*image.width() as usize});
-	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
-}
-
-#[cfg(feature="io")]
-pub fn rgba8(path: impl AsRef<core::path::Path>) -> Image<Box<[rgba8]>> {
-	let image = image::open(path).unwrap().into_rgba8();
-	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 4, channel_stride: 1, width: image.width(), width_stride: 4, height: image.height(), height_stride: 4*image.width() as usize});
-	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
-}
-
-#[cfg(feature="io")] pub type Result<T=(),E=image::ImageError> = core::result::Result<T, E>;
-#[cfg(feature="io")]
-pub fn save_u8(path: impl AsRef<core::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[u8]>>) -> Result {
-	assert_eq!(*stride, size.x);
-	image::save_buffer(path, &data, size.x, size.y, image::ColorType::L8)
-}
-#[cfg(feature="io")]
-pub fn save_alpha(path: impl AsRef<core::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[f32]>>) -> Result {
-	assert_eq!(*stride, size.x);
-	image::save_buffer(path, &Box::from_iter(data.into_iter().map(|&a| (a*(0xFF as f32)) as u8)), size.x, size.y, image::ColorType::L8)
-}
-#[cfg(feature="io")]
-pub fn save_rgb(path: impl AsRef<core::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[rgb8]>>) -> Result {
-	assert_eq!(*stride, size.x);
-	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgb8)
-}
-#[cfg(feature="io")]
-pub fn save_rgba(path: impl AsRef<core::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[rgba8]>>) -> Result {
-	assert_eq!(*stride, size.x);
-	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgba8)
-}
-
-#[cfg(feature="exr")] pub type ExrResult<T=(),E=exr::error::Error> = core::result::Result<T, E>;
-
-#[cfg(feature="exr")]
-pub fn f32(path: impl AsRef<core::path::Path>) -> ExrResult<Image<Box<[f32]>>> {
-	let exr = exr::prelude::read_first_flat_layer_from_file(path)?.layer_data;
-	let size = {let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}};
-	Ok(Image::from_xy(size, |xy{x,y}| { let &[exr::prelude::Sample::F32(v)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() else {unreachable!()}; v }))
-}
-
-#[cfg(feature="exr")]
-pub fn save_exr<D: core::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<core::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> ExrResult {
-	use exr::prelude::*;
-	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
-		channels: (ChannelDescription::named(channel, SampleType::F32),),
-		pixels: |Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)
-	}).write().to_file(path)
-}
-
-vector::vector!(2 za T T, z a, Depth Opacity);
-
-#[cfg(feature="exr")]
-pub fn za(path: impl AsRef<core::path::Path>) -> Image<Box<[za<f32>]>> {
-	let exr = exr::prelude::read_first_flat_layer_from_file(path).unwrap().layer_data;
-	Image::from_xy({let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}}, |xy{x,y}| if let &[exr::prelude::Sample::F32(z), exr::prelude::Sample::F32(a)] = exr.sample_vec_at(exr::prelude::Vec2(x as _,y as _)).as_slice() { za{z,a} } else { unimplemented!("") })
-}
-
-#[cfg(feature="exr")]
-pub fn save_exr2<D: core::ops::Deref<Target=[za<f32>]>+Sync>(path: impl AsRef<core::path::Path>, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
-	use exr::prelude::*;
-	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
-		channels:(ChannelDescription::named("depth", SampleType::F32), ChannelDescription::named("opacity", SampleType::F32)),
-		pixels:|Vec2(x,y)| { let za{z,a} = image[xy{x: x as _,y: y as _}]; (z,a) }
-	}).write().to_file(path)
-}
-
 use vector::{minmax, MinMax};
 pub fn bbox(mask: &Image<impl Deref<Target=[f32]>>) -> MinMax<uint2> {
 	minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap()
@@ -450,8 +343,21 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	}
 }
 
-/*#[cfg(feature="median")]
-pub fn median<D>(target_size: size, image@Image{size,..}: &Image<D>) -> Image<Box<[rgb8]>> where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Copy+Into<[u8; 3]> {
-	let ref image = imageproc::filter::median_filter(&image::ImageBuffer::from_fn(size.x, size.y, |x, y| image::Rgb(image[xy{x,y}].into())), 256, 256);
-	Image::from_iter(target_size, (0..target_size.y).map(|y| (0..target_size.x).map(move |x| image.get_pixel(x,y).0.into())).flatten())
-}**/
+#[cfg(feature="exr")]
+pub fn f32(path: impl AsRef<std::path::Path>) -> exr::error::Result<Image<Box<[f32]>>> {
+	let mut exr = exr::prelude::read_first_flat_layer_from_file(path)?.layer_data;
+	let size = {let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}};
+	Ok(match exr.channel_data.list.remove(0).sample_data {
+		exr::prelude::FlatSamples::F32(values) => Image::new(size, values.into_boxed_slice()),
+		_ => unimplemented!()
+	})
+}
+
+#[cfg(feature="exr")]
+pub fn save_exr<D: core::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::path::Path>, channel: &str, image@Image{size, ..}: &Image<D>) -> exr::error::Result<()> {
+	use exr::prelude::*;
+	Image::from_channels(Vec2(size.x as _, size.y as _), SpecificChannels{
+		channels: (ChannelDescription::named(channel, SampleType::F32),),
+		pixels: |Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)
+	}).write().to_file(path)
+}
