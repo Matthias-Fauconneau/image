@@ -205,18 +205,18 @@ pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf)
 }
 
 // /!\ keeps floats in the initial 8bit space (sRGB), i.e incorrect for interpolations
-pub fn from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[f32]>> { image.as_ref().map(|&u8| f32::from(u8)) }
+/*pub fn from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[f32]>> { image.as_ref().map(|&u8| f32::from(u8)) }
 pub fn from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { image.as_ref().map(|&rgb8| rgbf::from(rgb8)) }
 pub fn from_rgbf(image: &Image<impl AsRef<[rgbf]>>) -> Image<Box<[rgb8]>> { image.as_ref().map(|&rgbf| rgb8::from(rgbf)) }
-pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgbaf| rgba8::from(rgbaf)) }
+pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgbaf| rgba8::from(rgbaf)) }*/
 
 pub fn nearest<T:Copy>(size: size, source: &Image<impl Deref<Target=[T]>>) -> Image<Box<[T]>> { Image::from_xy(size, |xy{x,y}| source[xy{x,y}*source.size/size]) }
 
-pub fn downsample_sum<const FACTOR: u32, T:Copy+core::iter::Sum>(source: &Image<impl core::ops::Deref<Target=[T]>>) -> Image<Box<[T]>> {
+/*pub fn downsample_sum<const FACTOR: u32, T:Copy+core::iter::Sum>(source: &Image<impl core::ops::Deref<Target=[T]>>) -> Image<Box<[T]>> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}| (0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])).flatten().sum::<T>())
-}
+}*/
 
-pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[F::Output]>>
+pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[<F as core::ops::Div<f32>>::Output]>>
 	where F: From<T>+core::iter::Sum<F>+core::ops::Div<f32> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}|
 			(0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| F::from(source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])))
@@ -224,7 +224,15 @@ pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref sourc
 	)
 }
 
-pub fn downsample_rgba<const FACTOR: u32>(ref source: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
+pub fn bilinear_sample<D>(image@Image{size,..}: &Image<D>, s: vector::vec2) -> <Image<D> as Index<uint2>>::Output where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: num::Lerp<<Image<D> as Index<uint2>>::Output> {
+	let i = uint2::from(s);
+	let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| image[xy{x: ((i.x as i32+d.x) as u32+size.x)%size.x, y: ((i.y as i32+d.y).max(0) as u32).min(size.y-1)}]);
+	let f = s-s.map(f32::floor);
+	use num::lerp;
+	lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
+}
+
+/*pub fn downsample_rgba<const FACTOR: u32>(ref source: Image<&[rgba<f32>]>) -> Image<Box<[rgba<f32>]>> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}| {
 		let rgba{r,g,b,a} = (0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| { let rgba{r,g,b, a} = source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}]; rgba{r: r*a, g: g*a, b: b*a, a} })).flatten().sum::<rgba<f32>>();
 		if a == 0. { return rgba{r: 0., g: 0., b: 0., a} }
@@ -341,7 +349,7 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
 		self.slice_mut(bbox.min, bbox.size())
 	}
-}
+}*/
 
 #[cfg(feature="exr")]
 pub fn f32(path: impl AsRef<std::path::Path>) -> exr::error::Result<Image<Box<[f32]>>> {
