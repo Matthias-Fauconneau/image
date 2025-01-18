@@ -124,7 +124,11 @@ impl<T:Copy> Image<Box<[T]>> {
 	pub fn fill(size: size, value: T) -> Self { Self::from_iter(size, core::iter::from_fn(|| Some(value))) }
 }
 
-impl<D: IntoIterator> Image<D> { pub fn map<T>(self, f: impl FnMut(<D as IntoIterator>::Item)->T) -> Image<Box<[T]>> { Image::from_iter(self.size, self.data.into_iter().map(f)) } }
+impl<D: IntoIterator> Image<D> {
+	pub fn map<T>(self, f: impl FnMut(<D as IntoIterator>::Item)->T) -> Image<Box<[T]>> {
+		Image::from_iter(self.size, self.data.into_iter().map(f))
+	}
+}
 
 impl<D> Image<D> {
 	pub fn map_xy<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T>(&self, f: F) -> Image<Box<[T]>> where Self: Index<uint2> {
@@ -162,17 +166,21 @@ impl<T> rgba<T> { pub fn rgb(self) -> rgb<T> { let rgba{r,g,b,a:_} = self; rgb{r
 impl<T> From<bgra<T>> for rgba<T> { fn from(bgra{b,g,r,a}: bgra<T>) -> Self { rgba{r,g,b,a} } }
 
 impl bgr<f32> { pub fn clamp(&self) -> Self { Self{b: self.b.clamp(0.,1.), g: self.g.clamp(0.,1.), r: self.r.clamp(0.,1.)} } }
+
 pub type bgrf = bgr<f32>;
 pub type rgbf = rgb<f32>;
 pub type rgbaf = rgba<f32>;
+
+impl From<rgb<u8>> for rgba<u8> { fn from(rgb{r,g,b}: rgb<u8>) -> Self { rgba{r,g,b,a:0xFF} } }
 
 pub type bgr8 = bgr<u8>;
 pub type rgb8 = rgb<u8>;
 pub type bgra8 = bgra<u8>;
 pub type rgba8 = rgba<u8>;
 
-pub fn rgba8_from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&v| rgba::from(rgba{r:v,g:v,b:v,a:0xFF})) }
-pub fn rgba8_from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgb{r,g,b}| rgba::from(rgba{r,g,b,a:0xFF})) }
+
+//pub fn rgba8_from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&v| rgba::from(rgba{r:v,g:v,b:v,a:0xFF})) }
+//pub fn rgba8_from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgb{r,g,b}| rgba::from(rgba{r,g,b,a:0xFF})) }
 
 impl From<u32> for bgr8 { fn from(bgr: u32) -> Self { bgr{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF} } }
 impl From<u32> for bgra8 { fn from(bgr: u32) -> Self { bgra{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF, a: (bgr>>24) as u8 & 0xFF} } }
@@ -210,7 +218,7 @@ pub fn from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { imag
 pub fn from_rgbf(image: &Image<impl AsRef<[rgbf]>>) -> Image<Box<[rgb8]>> { image.as_ref().map(|&rgbf| rgb8::from(rgbf)) }
 pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgbaf| rgba8::from(rgbaf)) }*/
 
-pub fn nearest<T:Copy>(size: size, source: &Image<impl Deref<Target=[T]>>) -> Image<Box<[T]>> { Image::from_xy(size, |xy{x,y}| source[xy{x,y}*source.size/size]) }
+//pub fn nearest<T:Copy>(size: size, source: &Image<impl Deref<Target=[T]>>) -> Image<Box<[T]>> { Image::from_xy(size, |xy{x,y}| source[xy{x,y}*source.size/size]) }
 
 /*pub fn downsample_sum<const FACTOR: u32, T:Copy+core::iter::Sum>(source: &Image<impl core::ops::Deref<Target=[T]>>) -> Image<Box<[T]>> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}| (0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])).flatten().sum::<T>())
