@@ -1,7 +1,6 @@
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 use std::boxed::Box;
-pub use vector::{xy, uint2, size, int2};
-use vector::Rect;
+pub use vector::{xy, uint2, size, int2, Rect};
 
 pub struct Image<D> {
 	pub data : D,
@@ -52,6 +51,10 @@ impl<T, D:Deref<Target=[T]>> Image<D> {
 		assert!(offset.x+size.x <= self.size.x && offset.y+size.y <= self.size.y, "{:?} {:?} {:?} {:?}", offset, size, self.size, offset+size);
 		let start = offset.y*self.stride+offset.x;
 		Image{size, stride: self.stride, data: &self.data[start as usize..(start+(size.y-1)*self.stride+size.x) as usize]}
+	}
+	#[track_caller] pub fn crop(&self, rect: Rect) -> Image<&[T]> {
+		let rect = rect/*.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()})*/.unsigned();
+		self.slice(rect.min, rect.size())
 	}
 }
 
@@ -178,10 +181,6 @@ pub type rgb8 = rgb<u8>;
 pub type bgra8 = bgra<u8>;
 pub type rgba8 = rgba<u8>;
 
-
-//pub fn rgba8_from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&v| rgba::from(rgba{r:v,g:v,b:v,a:0xFF})) }
-//pub fn rgba8_from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgb{r,g,b}| rgba::from(rgba{r,g,b,a:0xFF})) }
-
 impl From<u32> for bgr8 { fn from(bgr: u32) -> Self { bgr{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF} } }
 impl From<u32> for bgra8 { fn from(bgr: u32) -> Self { bgra{b: (bgr>>0) as u8 & 0xFF, g: (bgr>>8) as u8 & 0xFF, r: (bgr>>16) as u8 & 0xFF, a: (bgr>>24) as u8 & 0xFF} } }
 impl From<bgr8> for u32 { fn from(bgr{b,g,r}: bgr<u8>) -> Self { (0xFF << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32) } }
@@ -227,8 +226,13 @@ pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { i
 pub fn downsample<T: Copy, D: Deref<Target=[T]>, F, const FACTOR: u32>(ref source: Image<D>) -> Image<Box<[<F as core::ops::Div<f32>>::Output]>>
 	where F: From<T>+core::iter::Sum<F>+core::ops::Div<f32> {
 	Image::from_xy(source.size/FACTOR, |xy{x,y}|
-			(0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| F::from(source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}])))
-				.flatten().sum::<F>() / (FACTOR as f32*FACTOR as f32)
+		(0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| F::from(source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}]))).flatten().sum::<F>() / (FACTOR as f32*FACTOR as f32)
+	)
+}
+
+pub fn downsample8<const FACTOR: u32>(ref source: Image<impl Deref<Target=[u8]>>) -> Image<Box<[u8]>> {
+	Image::from_xy(source.size/FACTOR, |xy{x,y}|
+		((0..FACTOR).map(|dy| (0..FACTOR).map(move |dx| source[xy{x:x*FACTOR+dx,y:y*FACTOR+dy}] as u32)).flatten().sum::<u32>() / (FACTOR*FACTOR)) as u8
 	)
 }
 
@@ -341,23 +345,35 @@ pub fn blur_rgba<const R: u32>(image: &Image<impl AsRef<[rgba<f32>]>>) -> Image<
 	transpose_box_convolve_rgba::<R>(transpose_box_convolve_rgba::<R>(image.as_ref().map(|&rgba{r,g,b,a}| rgba{r: r*a, g: g*a, b: b*a, a}).as_ref()).as_ref()).map(|rgba{r,g,b,a}| rgba{r: r/a, g: g/a, b: b/a, a})
 }
 
-use vector::{minmax, MinMax};
 pub fn bbox(mask: &Image<impl Deref<Target=[f32]>>) -> MinMax<uint2> {
 	minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap()
 }
 
-impl<T, D:Deref<Target=[T]>> Image<D> {
-	#[track_caller] pub fn crop(&self, bbox: MinMax<int2>) -> Image<&[T]> {
-		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
-		self.slice(bbox.min, bbox.size())
-	}
-}
 impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	#[track_caller] pub fn crop_mut(&mut self, bbox: MinMax<int2>) -> Image<&mut [T]> {
 		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
 		self.slice_mut(bbox.min, bbox.size())
 	}
 }*/
+
+#[cfg(feature="io")]
+pub fn u8(path: impl AsRef<std::path::Path>) -> Image<Box<[u8]>> {
+	let image = image::open(path).unwrap().into_luma8();
+	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 1, channel_stride: 1, width: image.width(), width_stride: 1, height: image.height(), height_stride: image.width() as _});
+	Image::new(xy{x: image.width(), y: image.height()}, image.into_raw().into_boxed_slice())
+}
+
+#[cfg(feature="io")] pub type Result<T=(),E=image::ImageError> = core::result::Result<T, E>;
+#[cfg(feature="io")]
+pub fn save_u8(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[u8]>>) -> Result {
+	assert_eq!(*stride, size.x);
+	image::save_buffer(path, &data, size.x, size.y, image::ColorType::L8)
+}
+#[cfg(feature="io")]
+pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[rgb8]>>) -> Result {
+	assert_eq!(*stride, size.x);
+	image::save_buffer(path, bytemuck::cast_slice(&data), size.x, size.y, image::ColorType::Rgb8)
+}
 
 #[cfg(feature="exr")]
 pub fn f32(path: impl AsRef<std::path::Path>) -> exr::error::Result<Image<Box<[f32]>>> {
