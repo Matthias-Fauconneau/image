@@ -1,6 +1,6 @@
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
 use std::boxed::Box;
-pub use vector::{xy, uint2, size, int2, Rect};
+pub use vector::{self, xy, uint2, size, int2, Rect};
 
 pub struct Image<D> {
 	pub data : D,
@@ -401,3 +401,10 @@ pub fn save_exr<D: core::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::pa
 		pixels: |Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)
 	}).write().to_file(path)
 }
+
+mod vector_XYZ { vector::vector!(3 XYZ T T T, X Y Z, X Y Z); } pub use vector_XYZ::XYZ;
+impl From<XYZ<f32>> for rgb<f32> { fn from(XYZ{X,Y,Z}: XYZ<f32>) -> Self { Self{
+	r:    3.2406 * X - 1.5372 * Y - 0.4986 * Z,
+	g: - 0.9689 * X + 1.8758 * Y + 0.0415 * Z,
+	b:   0.0557 * X - 0.2040 * Y + 1.0570 * Z,
+}}}
