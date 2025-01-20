@@ -363,12 +363,20 @@ pub fn u8(path: impl AsRef<std::path::Path>) -> Image<Box<[u8]>> {
 	Image::new(xy{x: image.width(), y: image.height()}, image.into_raw().into_boxed_slice())
 }
 
+#[cfg(feature="io")]
+pub fn rgb8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgb8]>> {
+	let image = image::open(path).unwrap().into_rgb8();
+	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 3, channel_stride: 1, width: image.width(), width_stride: 3, height: image.height(), height_stride: 3*image.width() as usize});
+	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
+}
+
 #[cfg(feature="io")] pub type Result<T=(),E=image::ImageError> = core::result::Result<T, E>;
 #[cfg(feature="io")]
 pub fn save_u8(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[u8]>>) -> Result {
 	assert_eq!(*stride, size.x);
 	image::save_buffer(path, &data, size.x, size.y, image::ColorType::L8)
 }
+
 #[cfg(feature="io")]
 pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &Image<impl Deref<Target=[rgb8]>>) -> Result {
 	assert_eq!(*stride, size.x);

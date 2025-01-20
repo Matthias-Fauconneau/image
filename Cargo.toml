@@ -13,5 +13,5 @@ exr = ['dep:exr']
 bytemuck='*'
 num={git='https://github.com/Matthias-Fauconneau/num'}
 vector={git='https://github.com/Matthias-Fauconneau/vector'}
-image={version='*', default-features=false, features=['png'], optional=true}
+image={version='*', default-features=false, features=['png','jpeg'], optional=true}
 exr={version='*', optional=true}
