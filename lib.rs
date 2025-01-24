@@ -236,9 +236,9 @@ pub fn downsample8<const FACTOR: u32>(ref source: Image<impl Deref<Target=[u8]>>
 	)
 }
 
-pub fn bilinear_sample<D>(image@Image{size,..}: &Image<D>, s: vector::vec2) -> <Image<D> as Index<uint2>>::Output where Image<D>: Index<uint2>, <Image<D> as Index<uint2>>::Output: Sized+Copy, f32: num::Lerp<<Image<D> as Index<uint2>>::Output> {
+pub fn bilinear_sample<T:Copy+num::Lerp, D:Deref<Target=[T]>>(image: &Image<D>, s: vector::vec2) -> T {
 	let i = uint2::from(s);
-	let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| image[xy{x: ((i.x as i32+d.x) as u32+size.x)%size.x, y: ((i.y as i32+d.y).max(0) as u32).min(size.y-1)}]);
+	let [n00, n10, n01, n11] = [xy{x: 0, y: 0},xy{x: 1, y: 0},xy{x: 0, y: 1},xy{x: 1, y:1}].map(|d| *image.get(i+d).unwrap_or_else(|| panic!("{s}")));
 	let f = s-s.map(f32::floor);
 	use num::lerp;
 	lerp(f.y, lerp(f.x, n00, n10), lerp(f.x, n01, n11))
@@ -281,38 +281,40 @@ pub fn blur_xy<const X: u32, const Y: u32>(image: &Image<impl AsRef<[f32]>>) -> 
 	transpose_box_convolve::<Y>(transpose_box_convolve::<X>(image.as_ref()).as_ref())
 }
 
-pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> { blur_xy::<R,R>(image) }
+pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> { blur_xy::<R,R>(image) }*/
 
-pub fn transpose_box_convolve_rgb<const R: u32>(source: Image<&[rgb<f32>]>) -> Image<Box<[rgb<f32>]>> {
+mod vector_XYZ { vector::vector!(3 XYZ T T T, X Y Z, X Y Z); } pub use vector_XYZ::XYZ;
+
+pub fn transpose_box_convolve_3<const R: u32>(source: Image<&[XYZ<f32>]>) -> Image<Box<[XYZ<f32>]>> {
 	let mut transpose = Image::uninitialized(source.size.yx());
 	for y in 0..source.size.y {
 		let r : f64 = R as f64;
-		let mut sum = r*rgb::<f64>::from(source[xy{x: 0, y}]);
-		for x in 0..R { sum += rgb::<f64>::from(source[xy{x, y}]); }
+		let mut sum = r*XYZ::<f64>::from(source[xy{x: 0, y}]);
+		for x in 0..R { sum += XYZ::<f64>::from(source[xy{x, y}]); }
 		for x in 0..R {
-			sum += rgb::<f64>::from(source[xy{x: x+R, y}]);
-			transpose[xy{x: y, y: x}] = rgb::<f32>::from(sum/(r+1.+r));
-			sum -= rgb::<f64>::from(source[xy{x: 0, y}]);
+			sum += XYZ::<f64>::from(source[xy{x: x+R, y}]);
+			transpose[xy{x: y, y: x}] = XYZ::<f32>::from(sum/(r+1.+r));
+			sum -= XYZ::<f64>::from(source[xy{x: 0, y}]);
 		}
 		for x in R..source.size.x-R {
-			sum += rgb::<f64>::from(source[xy{x: x+R, y}]);
-			transpose[xy{x: y, y: x}] = rgb::<f32>::from(sum/(r+1.+r));
-			sum -= rgb::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
+			sum += XYZ::<f64>::from(source[xy{x: x+R, y}]);
+			transpose[xy{x: y, y: x}] = XYZ::<f32>::from(sum/(r+1.+r));
+			sum -= XYZ::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
 		}
 		for x in source.size.x-R..source.size.x {
-				sum += rgb::<f64>::from(source[xy{x: source.size.x-1, y}]);
-				transpose[xy{x: y, y: x}] = rgb::<f32>::from(sum/(r+1.+r));
-				sum -= rgb::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
+				sum += XYZ::<f64>::from(source[xy{x: source.size.x-1, y}]);
+				transpose[xy{x: y, y: x}] = XYZ::<f32>::from(sum/(r+1.+r));
+				sum -= XYZ::<f64>::from(source[xy{x: (x as i32-R as i32) as u32, y}]);
 		}
 	}
 	transpose
 }
 
-pub fn blur_rgb<const R: u32>(image: &Image<impl AsRef<[rgb<f32>]>>) -> Image<Box<[rgb<f32>]>> {
-	transpose_box_convolve_rgb::<R>(transpose_box_convolve_rgb::<R>(image.as_ref()).as_ref())
+pub fn blur_3<const R: u32>(image: &Image<impl AsRef<[XYZ<f32>]>>) -> Image<Box<[XYZ<f32>]>> {
+	transpose_box_convolve_3::<R>(transpose_box_convolve_3::<R>(image.as_ref()).as_ref())
 }
 
-pub fn blur_rgb8<const R: u32>(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
+/*pub fn blur_rgb8<const R: u32>(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgb8]>> { // FIXME: not sRGB
 	from_rgbf(&blur_rgb::<R>(&from_rgb8(image)))
 }
 
@@ -357,14 +359,14 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 }*/
 
 #[cfg(feature="io")]
-pub fn u8(path: impl AsRef<std::path::Path>) -> Image<Box<[u8]>> {
+pub fn load_u8(path: impl AsRef<std::path::Path>) -> Image<Box<[u8]>> {
 	let image = image::open(path).unwrap().into_luma8();
 	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 1, channel_stride: 1, width: image.width(), width_stride: 1, height: image.height(), height_stride: image.width() as _});
 	Image::new(xy{x: image.width(), y: image.height()}, image.into_raw().into_boxed_slice())
 }
 
 #[cfg(feature="io")]
-pub fn rgb8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgb8]>> {
+pub fn load_rgb8(path: impl AsRef<std::path::Path>) -> Image<Box<[rgb8]>> {
 	let image = image::open(path).unwrap().into_rgb8();
 	assert_eq!(image.sample_layout(), image::flat::SampleLayout{channels: 3, channel_stride: 1, width: image.width(), width_stride: 3, height: image.height(), height_stride: 3*image.width() as usize});
 	Image::new(xy{x: image.width(), y: image.height()}, bytemuck::cast_slice_box(image.into_raw().into_boxed_slice()))
@@ -384,7 +386,7 @@ pub fn save_rgb(path: impl AsRef<std::path::Path>, Image{size, data, stride}: &I
 }
 
 #[cfg(feature="exr")]
-pub fn f32(path: impl AsRef<std::path::Path>) -> exr::error::Result<Image<Box<[f32]>>> {
+pub fn load_exr(path: impl AsRef<std::path::Path>) -> exr::error::Result<Image<Box<[f32]>>> {
 	let mut exr = exr::prelude::read_first_flat_layer_from_file(path)?.layer_data;
 	let size = {let exr::prelude::Vec2(x,y) = exr.size; xy{x: x as u32,y: y as _}};
 	Ok(match exr.channel_data.list.remove(0).sample_data {
@@ -401,10 +403,3 @@ pub fn save_exr<D: core::ops::Deref<Target=[f32]>+Sync>(path: impl AsRef<std::pa
 		pixels: |Vec2(x,y)| (image[xy{x: x as _,y: y as _}],)
 	}).write().to_file(path)
 }
-
-mod vector_XYZ { vector::vector!(3 XYZ T T T, X Y Z, X Y Z); } pub use vector_XYZ::XYZ;
-impl From<XYZ<f32>> for rgb<f32> { fn from(XYZ{X,Y,Z}: XYZ<f32>) -> Self { Self{
-	r:    3.2406 * X - 1.5372 * Y - 0.4986 * Z,
-	g: - 0.9689 * X + 1.8758 * Y + 0.0415 * Z,
-	b:   0.0557 * X - 0.2040 * Y + 1.0570 * Z,
-}}}
