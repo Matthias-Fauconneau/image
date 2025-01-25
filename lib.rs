@@ -1,4 +1,5 @@
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
+pub /*unsafe*/ fn replace_with/*_or_abort_unchecked*/<T, F: FnOnce(T) -> T>(v: &mut T, f: F) { unsafe{std::ptr::write(v, f(std::ptr::read(v)))} }
 use std::boxed::Box;
 pub use vector::{self, xy, uint2, size, int2, Rect};
 
@@ -18,11 +19,19 @@ impl<D> Image<D> {
 	}
 	#[track_caller] pub fn new<T>(size : size, data: D) -> Self where D:AsRef<[T]> { Self::strided(data, size, size.x) }
 
-	pub fn as_ref<T>(&self) -> Image<&[T]> where D:AsRef<[T]> { Image{data: self.data.as_ref(), size: self.size, stride: self.stride} }
-	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D:AsMut<[T]> { Image{data: self.data.as_mut(), size:self.size, stride: self.stride} }
+	pub fn as_ref<T>(&self) -> Image<&[T]> where D: AsRef<[T]> { Image{data: self.data.as_ref(), size: self.size, stride: self.stride} }
+	pub fn as_mut<T>(&mut self) -> Image<&mut [T]> where D: AsMut<[T]> { Image{data: self.data.as_mut(), size:self.size, stride: self.stride} }
 }
 
 use core::ops::{Deref, DerefMut, Index, IndexMut, Range};
+
+impl<T, D:Deref<Target=[T]>> Deref for Image<D> {
+	type Target=[T];
+	fn deref(&self) -> &Self::Target { &self.data }
+}
+impl<T, D:DerefMut<Target=[T]>> DerefMut for Image<D> {
+	fn deref_mut(&mut self) -> &mut Self::Target { &mut self.data }
+}
 
 impl<T, D:Deref<Target=[T]>> Index<usize> for Image<D> {
 	type Output=T;
@@ -73,6 +82,19 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 		let sub = self.rect().clip(sub);
 		Some(self.slice_mut(sub.min.unsigned(), Some(sub.size().unsigned()).filter(|s| s.x > 0 && s.y > 0)?))
 	}
+
+	pub fn replace(&mut self, f: impl Fn(T)->T+Copy) { for s in &mut *self.data { replace_with(s, f); } }
+	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
+	pub fn mut_zip_map<U, S:Deref<Target=[U]>, F: Fn(T,&U)->T+Copy>(&mut self, source: &Image<S>, f: F) {
+		assert!(self.size == source.size);
+		for y in 0..self.size.y { for x in 0..self.size.x { replace_with(&mut self[xy{x,y}], |s| f(s, &source[xy{x,y}])); } }
+	}
+	pub fn zip_map<U, S:Deref<Target=[U]>, F: Fn(T,&U)->T+Copy>(mut self, source: &Image<S>, f: F) -> Self { self.mut_zip_map(source, f); self }
+
+	/*#[track_caller] pub fn crop_mut(&mut self, bbox: MinMax<int2>) -> Image<&mut [T]> {
+		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
+		self.slice_mut(bbox.min, bbox.size())
+	}*/
 }
 
 #[cfg(feature="slice_take")] impl<'t, T> Image<&'t [T]> {
@@ -107,13 +129,6 @@ impl<T, D:DerefMut<Target=[T]>> Image<D> {
 	}
 }
 
-impl<T> Image<&mut [T]> {
-	#[track_caller] pub fn set<F:Fn(uint2)->T+Copy>(&mut self, f:F) { for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(xy{x,y}); } } }
-	pub fn zip_map<U, D:Deref<Target=[U]>, F: Fn(&T,&U)->T+Copy>(&mut self, source: &Image<D>, f: F) {
-		assert!(self.size == source.size);
-		for y in 0..self.size.y { for x in 0..self.size.x { self[xy{x,y}] = f(&self[xy{x,y}], &source[xy{x,y}]); } }
-	}
-}
 
 pub fn fill<T:Copy+Send>(target: &mut Image<&mut [T]>, value: T) { target.set(|_| value) }
 
@@ -128,6 +143,9 @@ impl<T:Copy> Image<Box<[T]>> {
 }
 
 impl<D: IntoIterator> Image<D> {
+	#[cfg(feature="slice_take")] pub fn clone<T:Clone>(&self) -> Image<Box<[T]>> {
+		Image::from_iter(self.size, Iterator::map(self.as_ref(), |row| row).flatten().cloned())
+	}
 	pub fn map<T>(self, f: impl FnMut(<D as IntoIterator>::Item)->T) -> Image<Box<[T]>> {
 		Image::from_iter(self.size, self.data.into_iter().map(f))
 	}
@@ -136,12 +154,6 @@ impl<D: IntoIterator> Image<D> {
 impl<D> Image<D> {
 	pub fn map_xy<T, F:Fn(uint2,&<Self as Index<uint2>>::Output)->T>(&self, f: F) -> Image<Box<[T]>> where Self: Index<uint2> {
 		Image::from_xy(self.size, |p| f(p,&self[p]))
-	}
-}
-
-impl<D> Image<D> {
-	#[cfg(feature="slice_take")] pub fn clone<T>(&self) -> Image<Box<[T]>> where D: AsRef<[T]>, T:Clone {
-		Image::from_iter(self.size, Iterator::map(self.as_ref(), |row| row).flatten().cloned())
 	}
 }
 
@@ -208,14 +220,8 @@ pub fn eotf(u8: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { let eotf = &
 pub fn lerp(eotf: &[f32; 256], oetf: &[u8; 0x1000], t: f32, a: bgr8, b: bgrf) -> u32 { oetf8_12_bgr(oetf, num::lerp(t, eotf8(eotf, a), b)).into() }
 pub fn blend(mask : &Image<&[f32]>, target: &mut Image<&mut [u32]>, color: bgrf) {
 	let (eotf, oetf) = (&sRGB8_EOTF, &sRGB8_OETF12);
-	target.zip_map(mask, |&target, &t| lerp(eotf, oetf, t, bgr8::from(target), color));
+	target.mut_zip_map(mask, |target, &t| lerp(eotf, oetf, t, bgr8::from(target), color));
 }
-
-// /!\ keeps floats in the initial 8bit space (sRGB), i.e incorrect for interpolations
-/*pub fn from_u8(image: &Image<impl AsRef<[u8]>>) -> Image<Box<[f32]>> { image.as_ref().map(|&u8| f32::from(u8)) }
-pub fn from_rgb8(image: &Image<impl AsRef<[rgb8]>>) -> Image<Box<[rgbf]>> { image.as_ref().map(|&rgb8| rgbf::from(rgb8)) }
-pub fn from_rgbf(image: &Image<impl AsRef<[rgbf]>>) -> Image<Box<[rgb8]>> { image.as_ref().map(|&rgbf| rgb8::from(rgbf)) }
-pub fn from_rgbaf(image: &Image<impl AsRef<[rgbaf]>>) -> Image<Box<[rgba8]>> { image.as_ref().map(|&rgbaf| rgba8::from(rgbaf)) }*/
 
 //pub fn nearest<T:Copy>(size: size, source: &Image<impl Deref<Target=[T]>>) -> Image<Box<[T]>> { Image::from_xy(size, |xy{x,y}| source[xy{x,y}*source.size/size]) }
 
@@ -275,13 +281,7 @@ pub fn transpose_box_convolve<const R: u32>(source@Image{size,..}: Image<&[f32]>
 		}
 	}
 	transpose
-}
-
-pub fn blur_xy<const X: u32, const Y: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> {
-	transpose_box_convolve::<Y>(transpose_box_convolve::<X>(image.as_ref()).as_ref())
-}
-
-pub fn blur<const R: u32>(image: &Image<impl AsRef<[f32]>>) -> Image<Box<[f32]>> { blur_xy::<R,R>(image) }*/
+}*/
 
 mod vector_XYZ { vector::vector!(3 XYZ T T T, X Y Z, X Y Z); } pub use vector_XYZ::XYZ;
 
@@ -349,13 +349,6 @@ pub fn blur_rgba<const R: u32>(image: &Image<impl AsRef<[rgba<f32>]>>) -> Image<
 
 pub fn bbox(mask: &Image<impl Deref<Target=[f32]>>) -> MinMax<uint2> {
 	minmax((0..mask.size.y).map(|y| (0..mask.size.x).map(move |x| xy{x,y})).flatten().filter(|&p| mask[p] > 0.)).unwrap()
-}
-
-impl<T, D:DerefMut<Target=[T]>> Image<D> {
-	#[track_caller] pub fn crop_mut(&mut self, bbox: MinMax<int2>) -> Image<&mut [T]> {
-		let bbox = bbox.clip(MinMax{min: xy{x:0,y:0}, max: self.size.signed()}).unsigned();
-		self.slice_mut(bbox.min, bbox.size())
-	}
 }*/
 
 #[cfg(feature="io")]
